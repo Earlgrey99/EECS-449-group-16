@@ -74,7 +74,7 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict] {
 }
 
 def parse_fetch_args(args: argparse.Namespace) -> tuple[int, str] {
-    n = 10;
+    n = 5;
     search = "";
     if args.count is not None {
         n = args.count;
@@ -119,7 +119,7 @@ def build_parser -> argparse.ArgumentParser {
     fetch_cmd = commands.add_parser("fetch", help="Fetch job listings from Jooble");
     fetch_cmd.add_argument("arg1", nargs="?", `default=None, help="Search keyword or number of listings");
     fetch_cmd.add_argument("arg2", nargs="?", `default=None, help="Search keyword or number of listings");
-    fetch_cmd.add_argument("-n", "--count", type=int, `default=None, help="Number of job listings to return");
+    fetch_cmd.add_argument("-n", "--count", type=int, `default=None, help="Number of job listings to return (default: 5)");
     fetch_cmd.add_argument("-s", "--search", type=str, `default=None, help="Search keyword");
     fetch_cmd.add_argument("--api-key", type=str, `default=None, help="Jooble API key");
     fetch_cmd.add_argument("--json", action="store_true", help="Output results as JSON");
@@ -177,25 +177,33 @@ test "greet returns default greeting" {
 test "parse_fetch_args resolves arguments accurately" {
     parser = build_parser();
 
-    args1 = parser.parse_args(["fetch", "software", "-n", "5"]);
+    args1 = parser.parse_args(["fetch", "software", "-n", "3"]);
     (n1, s1) = parse_fetch_args(args1);
-    assert n1 == 5;
+    assert n1 == 3;
     assert s1 == "software";
 
-    args2 = parser.parse_args(["fetch", "5", "python"]);
+    args2 = parser.parse_args(["fetch", "3", "python"]);
     (n2, s2) = parse_fetch_args(args2);
-    assert n2 == 5;
+    assert n2 == 3;
     assert s2 == "python";
 
-    args3 = parser.parse_args(["fetch", "python", "5"]);
+    args3 = parser.parse_args(["fetch", "python", "3"]);
     (n3, s3) = parse_fetch_args(args3);
-    assert n3 == 5;
+    assert n3 == 3;
     assert s3 == "python";
 
     args4 = parser.parse_args(["fetch", "developer"]);
     (n4, s4) = parse_fetch_args(args4);
-    assert n4 == 10;
+    assert n4 == 5;
     assert s4 == "developer";
+}
+
+test "fetch default count is 5" {
+    parser = build_parser();
+    args = parser.parse_args(["fetch", "designer"]);
+    (n, s) = parse_fetch_args(args);
+    assert n == 5;
+    assert s == "designer";
 }
 
 test "fetch with n <= 0 returns empty list" {
