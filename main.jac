@@ -21,13 +21,36 @@ def greet(name: str, shout: bool = False) -> str {
     return message.upper() if shout else message;
 }
 
+def load_env_file(filepath: str = ".env") {
+    if os.path.exists(filepath) {
+        try {
+            with open(filepath, "r") as f {
+                for raw_line in f {
+                    line = raw_line.strip();
+                    if line and not line.startswith("#") and "=" in line {
+                        (k, v) = line.split("=", 1);
+                        key_name = k.strip();
+                        val = v.strip().strip("'").strip("\"");
+                        if key_name and key_name not in os.environ {
+                            os.environ[key_name] = val;
+                        }
+                    }
+                }
+            }
+        } except Exception {
+            # Silently ignore .env read issues
+        }
+    }
+}
+
 def fetch(n: int, search: str, api_key: str | None = None) -> list[dict] {
     if n <= 0 {
         return [];
     }
+    load_env_file();
     key = api_key or os.environ.get("JOOBLE_API_KEY", "");
     if not key {
-        raise ValueError("Jooble API key must be provided via JOOBLE_API_KEY env var or --api-key argument.");
+        raise ValueError("Jooble API key must be provided via JOOBLE_API_KEY env var, .env file, or --api-key argument.");
     }
     url = f"https://jooble.org/api/{key}";
     body = json.dumps({"keywords": search, "ResultOnPage": n}).encode("utf-8");
@@ -185,8 +208,10 @@ test "fetch without api key raises ValueError" {
     if old_key is not None {
         del os.environ["JOOBLE_API_KEY"];
     }
-    with testraises(ValueError) {
-        fetch(5, "software", api_key=None);
+    with patch("os.path.exists", return_value=False) {
+        with testraises(ValueError) {
+            fetch(5, "software", api_key=None);
+        }
     }
     if old_key is not None {
         os.environ["JOOBLE_API_KEY"] = old_key;
