@@ -5,6 +5,7 @@ Add one by registering a parser in `build_parser` and a branch in `main`.
 
     jac run main.jac -- greet Ada --shout
     jac run main.jac -- fetch "software engineer" -n 5
+    jac run main.jac -- fetch "software engineer" -n 5 -l "New York"
 """
 
 import argparse;
@@ -43,7 +44,7 @@ def load_env_file(filepath: str = ".env") {
     }
 }
 
-def fetch(n: int, search: str, api_key: str | None = None) -> list[dict] {
+def fetch(n: int, search: str, location: str | None = None, api_key: str | None = None) -> list[dict] {
     if n <= 0 {
         return [];
     }
@@ -53,7 +54,11 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict] {
         raise ValueError("Jooble API key must be provided via JOOBLE_API_KEY env var, .env file, or --api-key argument.");
     }
     url = f"https://jooble.org/api/{key}";
-    body = json.dumps({"keywords": search, "ResultOnPage": n}).encode("utf-8");
+    req_payload = {"keywords": search, "ResultOnPage": n};
+    if location {
+        req_payload["location"] = location;
+    }
+    body = json.dumps(req_payload).encode("utf-8");
     req = urllib.request.Request(
         url,
         data=body,
@@ -61,7 +66,7 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict] {
     );
     try {
         with urllib.request.urlopen(req) as resp {
-            payload = json.loads(resp.read().decode("utf-8"));
+            resp_payload = json.loads(resp.read().decode("utf-8"));
         }
     } except urllib.error.HTTPError as e {
         raise RuntimeError(f"Jooble API HTTP error: {e.code} {e.reason}");
@@ -69,13 +74,14 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict] {
         raise RuntimeError(f"Jooble API network error: {e.reason}");
     }
 
-    raw_jobs = payload.get("jobs", []) if isinstance(payload, dict) else [];
+    raw_jobs = resp_payload.get("jobs", []) if isinstance(resp_payload, dict) else [];
     return raw_jobs[:n];
 }
 
-def parse_fetch_args(args: argparse.Namespace) -> tuple[int, str] {
+def parse_fetch_args(args: argparse.Namespace, location: str | None = None) -> tuple[int, str, str | None] {
     n = 5;
     search = "";
+    loc = location if location is not None else args?.location;
     if args.count is not None {
         n = args.count;
     }
@@ -103,7 +109,7 @@ def parse_fetch_args(args: argparse.Namespace) -> tuple[int, str] {
             search = arg1;
         }
     }
-    return (n, search);
+    return (n, search, loc);
 }
 
 def build_parser -> argparse.ArgumentParser {
@@ -121,6 +127,7 @@ def build_parser -> argparse.ArgumentParser {
     fetch_cmd.add_argument("arg2", nargs="?", `default=None, help="Search keyword or number of listings");
     fetch_cmd.add_argument("-n", "--count", type=int, `default=None, help="Number of job listings to return (default: 5)");
     fetch_cmd.add_argument("-s", "--search", type=str, `default=None, help="Search keyword");
+    fetch_cmd.add_argument("-l", "--location", type=str, `default=None, help="Job location");
     fetch_cmd.add_argument("--api-key", type=str, `default=None, help="Jooble API key");
     fetch_cmd.add_argument("--json", action="store_true", help="Output results as JSON");
 
@@ -133,24 +140,28 @@ def main(argv: list[str] | None = None) -> int {
         print(greet(args.name, args.shout));
         return 0;
     } elif args.command == "fetch" {
-        (n, search) = parse_fetch_args(args);
+        (n, search, location) = parse_fetch_args(args);
         if not search {
             print("Error: 'search' argument is required.", file=sys.stderr);
             return 1;
         }
         try {
-            jobs = fetch(n, search, api_key=args.api_key);
+            jobs = fetch(n, search, location=location, api_key=args.api_key);
             if args.json {
                 print(json.dumps(jobs, indent=2));
             } else {
-                print(f"Found {len(jobs)} jobs for '{search}':\n");
+                if location {
+                    print(f"Found {len(jobs)} jobs for '{search}' in '{location}':\n");
+                } else {
+                    print(f"Found {len(jobs)} jobs for '{search}':\n");
+                }
                 for (idx, job) in enumerate(jobs, 1) {
                     title = job.get("title", "No title");
                     company = job.get("company", "Unknown company");
-                    location = job.get("location", "Unknown location");
+                    job_location = job.get("location", "Unknown location");
                     salary = job.get("salary", "");
                     link = job.get("link", "");
-                    print(f"{idx}. {title} - {company} ({location})");
+                    print(f"{idx}. {title} - {company} ({job_location})");
                     if salary {
                         print(f"   Salary: {salary}");
                     }
@@ -178,32 +189,65 @@ test "parse_fetch_args resolves arguments accurately" {
     parser = build_parser();
 
     args1 = parser.parse_args(["fetch", "software", "-n", "3"]);
-    (n1, s1) = parse_fetch_args(args1);
+    (n1, s1, loc1) = parse_fetch_args(args1);
     assert n1 == 3;
     assert s1 == "software";
+    assert loc1 is None;
 
     args2 = parser.parse_args(["fetch", "3", "python"]);
-    (n2, s2) = parse_fetch_args(args2);
+    (n2, s2, loc2) = parse_fetch_args(args2);
     assert n2 == 3;
     assert s2 == "python";
+    assert loc2 is None;
 
     args3 = parser.parse_args(["fetch", "python", "3"]);
-    (n3, s3) = parse_fetch_args(args3);
+    (n3, s3, loc3) = parse_fetch_args(args3);
     assert n3 == 3;
     assert s3 == "python";
+    assert loc3 is None;
 
     args4 = parser.parse_args(["fetch", "developer"]);
-    (n4, s4) = parse_fetch_args(args4);
+    (n4, s4, loc4) = parse_fetch_args(args4);
     assert n4 == 5;
     assert s4 == "developer";
+    assert loc4 is None;
+}
+
+test "parse_fetch_args parses location argument" {
+    parser = build_parser();
+
+    args1 = parser.parse_args(["fetch", "software", "-l", "New York"]);
+    (n1, s1, loc1) = parse_fetch_args(args1);
+    assert n1 == 5;
+    assert s1 == "software";
+    assert loc1 == "New York";
+
+    args2 = parser.parse_args(["fetch", "engineer", "--location", "San Francisco, CA"]);
+    (n2, s2, loc2) = parse_fetch_args(args2);
+    assert n2 == 5;
+    assert s2 == "engineer";
+    assert loc2 == "San Francisco, CA";
+
+    args3 = parser.parse_args(["fetch", "designer", "-n", "2", "-l", "Remote"]);
+    (n3, s3, loc3) = parse_fetch_args(args3);
+    assert n3 == 2;
+    assert s3 == "designer";
+    assert loc3 == "Remote";
+
+    args4 = parser.parse_args(["fetch", "developer"]);
+    (n4, s4, loc4) = parse_fetch_args(args4, location="Chicago");
+    assert n4 == 5;
+    assert s4 == "developer";
+    assert loc4 == "Chicago";
 }
 
 test "fetch default count is 5" {
     parser = build_parser();
     args = parser.parse_args(["fetch", "designer"]);
-    (n, s) = parse_fetch_args(args);
+    (n, s, l) = parse_fetch_args(args);
     assert n == 5;
     assert s == "designer";
+    assert l is None;
 }
 
 test "fetch with n <= 0 returns empty list" {
@@ -264,6 +308,39 @@ test "fetch with mocked API response" {
     }
 }
 
+test "fetch includes location in payload when specified" {
+    mock_payload = {
+        "totalCount": 1,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Software Engineer",
+                "company": "Tech Corp",
+                "location": "Ann Arbor, MI"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen {
+        fetch(5, "engineer", location="Ann Arbor, MI", api_key="test-api-key");
+        assert mock_urlopen.called;
+        sent_req = mock_urlopen.call_args[0][0];
+        sent_payload = json.loads(sent_req.data.decode("utf-8"));
+        assert sent_payload["keywords"] == "engineer";
+        assert sent_payload["ResultOnPage"] == 5;
+        assert sent_payload["location"] == "Ann Arbor, MI";
+
+        fetch(5, "engineer", location=None, api_key="test-api-key");
+        sent_req_none = mock_urlopen.call_args[0][0];
+        sent_payload_none = json.loads(sent_req_none.data.decode("utf-8"));
+        assert "location" not in sent_payload_none;
+    }
+}
+
 test "main CLI runs fetch successfully" {
     mock_payload = {
         "totalCount": 1,
@@ -289,6 +366,37 @@ test "main CLI runs fetch successfully" {
 
         code_json = main(["fetch", "backend", "-n", "1", "--api-key", "test-api-key", "--json"]);
         assert code_json == 0;
+    }
+}
+
+test "main CLI runs fetch with location successfully" {
+    mock_payload = {
+        "totalCount": 1,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Backend Engineer",
+                "company": "Jooble Partner",
+                "location": "New York, NY",
+                "salary": "$130,000",
+                "link": "https://jooble.org/desc/backend"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen {
+        code = main(["fetch", "backend", "-n", "1", "-l", "New York", "--api-key", "test-api-key"]);
+        assert code == 0;
+        sent_req = mock_urlopen.call_args[0][0];
+        sent_payload = json.loads(sent_req.data.decode("utf-8"));
+        assert sent_payload["location"] == "New York";
+
+        code_long = main(["fetch", "backend", "--location", "New York", "--api-key", "test-api-key"]);
+        assert code_long == 0;
     }
 }
 
