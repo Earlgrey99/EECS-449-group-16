@@ -6,6 +6,7 @@ Add one by registering a parser in `build_parser` and a branch in `main`.
     jac run main.jac -- greet Ada --shout
     jac run main.jac -- fetch "software engineer" -n 5
     jac run main.jac -- fetch "software engineer" -n 5 -l "New York"
+    jac run main.jac -- db-init
 """
 
 import argparse;
@@ -16,6 +17,26 @@ import sys;
 import urllib.error;
 import urllib.request;
 import from unittest.mock { MagicMock, patch }
+import from db {
+    get_db_connection,
+    init_db,
+    create_user,
+    get_user_by_id,
+    get_user_by_email,
+    list_users,
+    update_user,
+    delete_user,
+    create_resume,
+    get_resume_by_id,
+    list_resumes_by_user,
+    update_resume,
+    delete_resume,
+    create_application,
+    get_application_by_id,
+    list_applications_by_user,
+    update_application,
+    delete_application
+}
 
 def greet(name: str, shout: bool = False) -> str {
     message = f"Hello, {name}! This is EECS-449-group-16.";
@@ -131,6 +152,10 @@ def build_parser -> argparse.ArgumentParser {
     fetch_cmd.add_argument("--api-key", type=str, `default=None, help="Jooble API key");
     fetch_cmd.add_argument("--json", action="store_true", help="Output results as JSON");
 
+    db_init_cmd = commands.add_parser("db-init", help="Initialize Turso database schema");
+    db_init_cmd.add_argument("--url", type=str, `default=None, help="Database URL");
+    db_init_cmd.add_argument("--token", type=str, `default=None, help="Auth token");
+
     return parser;
 }
 
@@ -174,6 +199,16 @@ def main(argv: list[str] | None = None) -> int {
             return 0;
         } except Exception as e {
             print(f"Error fetching jobs: {str(e)}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "db-init" {
+        try {
+            conn = get_db_connection(database_url=args.url, auth_token=args.token);
+            init_db(conn=conn);
+            print("Database schema initialized successfully.");
+            return 0;
+        } except Exception as e {
+            print(f"Error initializing database: {str(e)}", file=sys.stderr);
             return 1;
         }
     }
@@ -398,6 +433,184 @@ test "main CLI runs fetch with location successfully" {
         code_long = main(["fetch", "backend", "--location", "New York", "--api-key", "test-api-key"]);
         assert code_long == 0;
     }
+}
+
+# --- Database Tests ---
+
+test "get_db_connection without url raises ValueError" {
+    old_url1 = os.environ.get("TURSO_DATABASE_URL");
+    old_url2 = os.environ.get("TURSO_URL");
+    if old_url1 is not None {
+        del os.environ["TURSO_DATABASE_URL"];
+    }
+    if old_url2 is not None {
+        del os.environ["TURSO_URL"];
+    }
+    with patch("os.path.exists", return_value=False) {
+        with testraises(ValueError) {
+            get_db_connection(database_url=None, auth_token=None);
+        }
+    }
+    if old_url1 is not None {
+        os.environ["TURSO_DATABASE_URL"] = old_url1;
+    }
+    if old_url2 is not None {
+        os.environ["TURSO_URL"] = old_url2;
+    }
+}
+
+test "db-init initializes tables on in-memory database" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+    cur = conn.cursor();
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name ASC;");
+    tables = [r[0] for r in cur.fetchall()];
+    assert "users" in tables;
+    assert "resumes" in tables;
+    assert "applications" in tables;
+}
+
+test "CRUD operations on users" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = create_user("Alice Smith", "alice@example.com", "555-1234", conn=conn);
+    assert user["id"] == 1;
+    assert user["name"] == "Alice Smith";
+    assert user["email"] == "alice@example.com";
+    assert user["phone"] == "555-1234";
+
+    fetched = get_user_by_id(1, conn=conn);
+    assert fetched is not None;
+    assert fetched["email"] == "alice@example.com";
+
+    by_email = get_user_by_email("alice@example.com", conn=conn);
+    assert by_email is not None;
+    assert by_email["id"] == 1;
+
+    users = list_users(conn=conn);
+    assert len(users) == 1;
+
+    updated = update_user(1, name="Alice Johnson", phone="555-9999", conn=conn);
+    assert updated is not None;
+    assert updated["name"] == "Alice Johnson";
+    assert updated["phone"] == "555-9999";
+    assert updated["email"] == "alice@example.com";
+
+    deleted = delete_user(1, conn=conn);
+    assert deleted;
+    assert get_user_by_id(1, conn=conn) is None;
+}
+
+test "CRUD operations on resumes" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = create_user("Bob Jones", "bob@example.com", conn=conn);
+    u_id = user["id"];
+
+    resume = create_resume(u_id, "Software Engineer Resume", "Python, Jac, SQL", "resumes/bob.pdf", conn=conn);
+    assert resume["id"] == 1;
+    assert resume["user_id"] == u_id;
+    assert resume["title"] == "Software Engineer Resume";
+    assert resume["file_path"] == "resumes/bob.pdf";
+
+    fetched = get_resume_by_id(1, conn=conn);
+    assert fetched is not None;
+    assert fetched["title"] == "Software Engineer Resume";
+
+    resumes = list_resumes_by_user(u_id, conn=conn);
+    assert len(resumes) == 1;
+
+    updated = update_resume(1, title="Senior SWE Resume", file_path="resumes/bob_v2.pdf", conn=conn);
+    assert updated is not None;
+    assert updated["title"] == "Senior SWE Resume";
+    assert updated["file_path"] == "resumes/bob_v2.pdf";
+
+    deleted = delete_resume(1, conn=conn);
+    assert deleted;
+    assert get_resume_by_id(1, conn=conn) is None;
+}
+
+test "CRUD operations on applications" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = create_user("Charlie", "charlie@example.com", conn=conn);
+    resume = create_resume(user["id"], "General", conn=conn);
+
+    app = create_application(
+        user["id"],
+        "Backend Developer",
+        "Acme Corp",
+        resume_id=resume["id"],
+        job_url="https://acme.com/jobs/1",
+        status="applied",
+        applied_date="2026-10-09",
+        notes="Applied via website",
+        conn=conn
+    );
+    assert app["id"] == 1;
+    assert app["job_title"] == "Backend Developer";
+    assert app["company"] == "Acme Corp";
+    assert app["status"] == "applied";
+
+    fetched = get_application_by_id(1, conn=conn);
+    assert fetched is not None;
+    assert fetched["company"] == "Acme Corp";
+
+    all_apps = list_applications_by_user(user["id"], conn=conn);
+    assert len(all_apps) == 1;
+
+    applied_apps = list_applications_by_user(user["id"], status="applied", conn=conn);
+    assert len(applied_apps) == 1;
+
+    interviewing_apps = list_applications_by_user(user["id"], status="interviewing", conn=conn);
+    assert len(interviewing_apps) == 0;
+
+    updated = update_application(1, status="interviewing", notes="First round scheduled", conn=conn);
+    assert updated is not None;
+    assert updated["status"] == "interviewing";
+    assert updated["notes"] == "First round scheduled";
+
+    deleted = delete_application(1, conn=conn);
+    assert deleted;
+    assert get_application_by_id(1, conn=conn) is None;
+}
+
+test "Foreign key enforcement and cascading deletes" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    with testraises(Exception) {
+        create_resume(999, "Invalid Resume", conn=conn);
+    }
+
+    with testraises(Exception) {
+        create_application(999, "Engineer", "TechCorp", conn=conn);
+    }
+
+    user = create_user("Dave", "dave@example.com", conn=conn);
+    resume = create_resume(user["id"], "Dave Resume", conn=conn);
+    app = create_application(user["id"], "SWE", "BigCo", resume_id=resume["id"], conn=conn);
+
+    delete_user(user["id"], conn=conn);
+    assert get_resume_by_id(resume["id"], conn=conn) is None;
+    assert get_application_by_id(app["id"], conn=conn) is None;
+
+    user2 = create_user("Eve", "eve@example.com", conn=conn);
+    resume2 = create_resume(user2["id"], "Eve Resume", conn=conn);
+    app2 = create_application(user2["id"], "SWE", "Startup", resume_id=resume2["id"], conn=conn);
+
+    delete_resume(resume2["id"], conn=conn);
+    updated_app2 = get_application_by_id(app2["id"], conn=conn);
+    assert updated_app2 is not None;
+    assert updated_app2["resume_id"] is None;
+}
+
+test "main CLI runs db-init successfully" {
+    code = main(["db-init", "--url", ":memory:"]);
+    assert code == 0;
 }
 
 with entry:__main__ {
