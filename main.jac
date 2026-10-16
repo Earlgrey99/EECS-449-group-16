@@ -7,11 +7,14 @@ Add one by registering a parser in `build_parser` and a branch in `main`.
     jac run main.jac -- fetch "software engineer" -n 5
     jac run main.jac -- fetch "software engineer" -n 5 -l "New York"
     jac run main.jac -- db-init
+    jac run main.jac -- signup --name "Ada Lovelace" --email "ada@example.com"
+    jac run main.jac -- login --email "ada@example.com"
 """
 
 import argparse;
 import csv;
 import datetime;
+import getpass;
 import io;
 import json;
 import os;
@@ -23,6 +26,10 @@ import from unittest.mock { MagicMock, patch }
 import from db {
     get_db_connection,
     init_db,
+    hash_password,
+    verify_password,
+    register_user,
+    authenticate_user,
     create_user,
     get_user_by_id,
     get_user_by_email,
@@ -271,6 +278,20 @@ def build_parser -> argparse.ArgumentParser {
     db_init_cmd.add_argument("--url", type=str, `default=None, help="Database URL");
     db_init_cmd.add_argument("--token", type=str, `default=None, help="Auth token");
 
+    signup_cmd = commands.add_parser("signup", help="Register a new user account");
+    signup_cmd.add_argument("--name", type=str, required=True, help="User's full name");
+    signup_cmd.add_argument("--email", type=str, required=True, help="User's email address");
+    signup_cmd.add_argument("-p", "--password", type=str, `default=None, help="User password (prompted securely if omitted)");
+    signup_cmd.add_argument("--phone", type=str, `default=None, help="User phone number");
+    signup_cmd.add_argument("--url", type=str, `default=None, help="Database URL");
+    signup_cmd.add_argument("--token", type=str, `default=None, help="Auth token");
+
+    login_cmd = commands.add_parser("login", help="Authenticate with email and password");
+    login_cmd.add_argument("--email", type=str, required=True, help="User's email address");
+    login_cmd.add_argument("-p", "--password", type=str, `default=None, help="User password (prompted securely if omitted)");
+    login_cmd.add_argument("--url", type=str, `default=None, help="Database URL");
+    login_cmd.add_argument("--token", type=str, `default=None, help="Auth token");
+
     return parser;
 }
 
@@ -346,6 +367,47 @@ def main(argv: list[str] | None = None) -> int {
             return 0;
         } except Exception as e {
             print(f"Error initializing database: {str(e)}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "signup" {
+        password = args.password;
+        if not password {
+            password = getpass.getpass("Password: ");
+        }
+        try {
+            conn = get_db_connection(database_url=args.url, auth_token=args.token);
+            user = register_user(
+                name=args.name,
+                email=args.email,
+                password=password,
+                phone=args.phone,
+                conn=conn
+            );
+            print(f"User '{user['name']}' ({user['email']}) registered successfully with ID {user['id']}.");
+            return 0;
+        } except ValueError as e {
+            print(f"Registration failed: {str(e)}", file=sys.stderr);
+            return 1;
+        } except Exception as e {
+            print(f"Error registering user: {str(e)}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "login" {
+        password = args.password;
+        if not password {
+            password = getpass.getpass("Password: ");
+        }
+        try {
+            conn = get_db_connection(database_url=args.url, auth_token=args.token);
+            auth_res = authenticate_user(email=args.email, password=password, conn=conn);
+            if auth_res is None {
+                print("Authentication failed: Invalid email or password.", file=sys.stderr);
+                return 1;
+            }
+            print(f"Login successful. Welcome {auth_res['name']}! (Session token: {auth_res['session_token']})");
+            return 0;
+        } except Exception as e {
+            print(f"Error during login: {str(e)}", file=sys.stderr);
             return 1;
         }
     }
@@ -818,6 +880,162 @@ test "Foreign key enforcement and cascading deletes" {
 test "main CLI runs db-init successfully" {
     code = main(["db-init", "--url", ":memory:"]);
     assert code == 0;
+}
+
+# --- Authentication Tests ---
+
+test "hash_password generates salted hashes and verify_password verifies correctly" {
+    pw = "supersecret123";
+    h1 = hash_password(pw);
+    h2 = hash_password(pw);
+    assert h1 != h2;
+    assert "$" in h1;
+    assert verify_password(pw, h1);
+    assert verify_password(pw, h2);
+    assert not verify_password("wrongpassword", h1);
+    assert not verify_password("", h1);
+    assert not verify_password(pw, "");
+    assert not verify_password(pw, "invalidhashwithoutdelimiter");
+}
+
+test "register_user successfully creates user and avoids storing plaintext password" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = register_user("Grace Hopper", "grace@example.com", "nanoseconds!", phone="555-0100", conn=conn);
+    assert user["id"] == 1;
+    assert user["name"] == "Grace Hopper";
+    assert user["email"] == "grace@example.com";
+    assert user["phone"] == "555-0100";
+    assert "password_hash" not in user;
+
+    # Verify password_hash is stored in database and not plaintext
+    cur = conn.cursor();
+    cur.execute("SELECT password_hash FROM users WHERE id = 1");
+    row = cur.fetchone();
+    assert row is not None;
+    assert row[0] != "nanoseconds!";
+    assert "$" in row[0];
+    assert verify_password("nanoseconds!", row[0]);
+}
+
+test "register_user validation and uniqueness constraints" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    with testraises(ValueError) {
+        register_user("", "test@example.com", "pass", conn=conn);
+    }
+    with testraises(ValueError) {
+        register_user("Name", "", "pass", conn=conn);
+    }
+    with testraises(ValueError) {
+        register_user("Name", "test@example.com", "", conn=conn);
+    }
+
+    register_user("User One", "user@example.com", "pass1", conn=conn);
+    with testraises(ValueError) {
+        register_user("User Two", "user@example.com", "pass2", conn=conn);
+    }
+    with testraises(ValueError) {
+        register_user("User Two", "USER@EXAMPLE.COM", "pass2", conn=conn);
+    }
+}
+
+test "authenticate_user verifies credentials and issues session token" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    register_user("Alan Turing", "alan@example.com", "enigma_solved", conn=conn);
+
+    # Valid login
+    auth_success = authenticate_user("alan@example.com", "enigma_solved", conn=conn);
+    assert auth_success is not None;
+    assert auth_success["name"] == "Alan Turing";
+    assert auth_success["email"] == "alan@example.com";
+    assert "password_hash" not in auth_success;
+    assert "session_token" in auth_success;
+    assert len(auth_success["session_token"]) == 48;
+
+    # Case-insensitive email login
+    auth_ci = authenticate_user("ALAN@EXAMPLE.COM", "enigma_solved", conn=conn);
+    assert auth_ci is not None;
+
+    # Invalid password
+    auth_wrong_pw = authenticate_user("alan@example.com", "wrong_code", conn=conn);
+    assert auth_wrong_pw is None;
+
+    # Nonexistent user
+    auth_no_user = authenticate_user("nobody@example.com", "password", conn=conn);
+    assert auth_no_user is None;
+
+    # Empty inputs
+    assert authenticate_user("", "enigma_solved", conn=conn) is None;
+    assert authenticate_user("alan@example.com", "", conn=conn) is None;
+}
+
+test "main CLI runs signup and login commands" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        db_path = os.path.join(temp_dir, "auth_test.db");
+        init_code = main(["db-init", "--url", db_path]);
+        assert init_code == 0;
+
+        # Signup with --password
+        signup_code = main([
+            "signup",
+            "--name", "Ada Lovelace",
+            "--email", "ada@example.com",
+            "-p", "analytical_engine",
+            "--url", db_path
+        ]);
+        assert signup_code == 0;
+
+        # Signup duplicate email fails
+        signup_dup_code = main([
+            "signup",
+            "--name", "Ada Duplicate",
+            "--email", "ada@example.com",
+            "-p", "newpass",
+            "--url", db_path
+        ]);
+        assert signup_dup_code == 1;
+
+        # Login with --password
+        login_code = main([
+            "login",
+            "--email", "ada@example.com",
+            "-p", "analytical_engine",
+            "--url", db_path
+        ]);
+        assert login_code == 0;
+
+        # Login with wrong password
+        login_fail_code = main([
+            "login",
+            "--email", "ada@example.com",
+            "-p", "wrongpassword",
+            "--url", db_path
+        ]);
+        assert login_fail_code == 1;
+
+        # Signup and login using prompted password (getpass)
+        with patch("getpass.getpass", return_value="bernoulli_numbers") {
+            prompt_signup_code = main([
+                "signup",
+                "--name", "Charles Babbage",
+                "--email", "charles@example.com",
+                "--url", db_path
+            ]);
+            assert prompt_signup_code == 0;
+
+            prompt_login_code = main([
+                "login",
+                "--email", "charles@example.com",
+                "--url", db_path
+            ]);
+            assert prompt_login_code == 0;
+        }
+    }
 }
 
 with entry:__main__ {

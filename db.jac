@@ -1,57 +1,60 @@
 """Database access layer and schema management for Turso (libSQL / SQLite)."""
 
+import hashlib;
+import hmac;
 import os;
+import secrets;
 import sqlite3;
 import libsql;
 
-def load_env_file(filepath: str = ".env") {
-    if os.path.exists(filepath) {
-        try {
-            with open(filepath, "r") as f {
-                for raw_line in f {
-                    line = raw_line.strip();
-                    if line and not line.startswith("#") and "=" in line {
-                        (k, v) = line.split("=", 1);
-                        key_name = k.strip();
-                        val = v.strip().strip("'").strip("\"");
-                        if key_name and key_name not in os.environ {
-                            os.environ[key_name] = val;
-                        }
-                    }
+def load_env_file(filepath: str = ".env") -> None {
+    if not os.path.exists(filepath) {
+        return;
+    }
+    with open(filepath, "r", encoding="utf-8") as f {
+        for line in f {
+            clean_line = line.strip();
+            if not clean_line or clean_line.startswith("#") {
+                continue;
+            }
+            if "=" in clean_line {
+                parts = clean_line.split("=", 1);
+                key = parts[0].strip();
+                value = parts[1].strip().strip("\"").strip("'");
+                if key not in os.environ {
+                    os.environ[key] = value;
                 }
             }
-        } except Exception {
-            # Silently ignore .env read issues
         }
     }
 }
 
-def get_db_connection(database_url: str | None = None, auth_token: str | None = None) -> any {
+def get_db_connection(
+    database_url: str | None = None,
+    auth_token: str | None = None
+) -> any {
     load_env_file();
     url = database_url or os.environ.get("TURSO_DATABASE_URL") or os.environ.get("TURSO_URL");
     token = auth_token or os.environ.get("TURSO_AUTH_TOKEN") or os.environ.get("TURSO_TOKEN");
 
     if not url {
-        raise ValueError("Database URL must be provided via TURSO_DATABASE_URL/TURSO_URL env var, .env file, or --url argument.");
+        raise ValueError(
+            "Database URL must be provided via argument, TURSO_DATABASE_URL or TURSO_URL env var."
+        );
     }
 
-    if url.startswith("libsql://") or url.startswith("http://") or url.startswith("https://") {
-        conn = libsql.connect(url, auth_token=token);
-    } else {
-        try {
-            conn = libsql.connect(url);
-        } except Exception {
-            conn = sqlite3.connect(url);
-        }
+    if url == ":memory:" or url.startswith("file:") or url.endswith(".db") {
+        conn = sqlite3.connect(url);
+        conn.execute("PRAGMA foreign_keys = ON;");
+        return conn;
     }
-    conn.execute("PRAGMA foreign_keys = ON;");
+
+    conn = libsql.connect(database=url, auth_token=token);
     return conn;
 }
 
 def init_db(conn: any = None) {
     db_conn = conn if conn is not None else get_db_connection();
-
-    db_conn.execute("PRAGMA foreign_keys = ON;");
 
     # Users table
     db_conn.execute("""
@@ -59,12 +62,18 @@ def init_db(conn: any = None) {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
+            password_hash TEXT,
             phone TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """);
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);");
+    try {
+        db_conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT;");
+    } except Exception {
+        # Column already exists or table was newly created
+    }
 
     # Resumes table
     db_conn.execute("""
@@ -79,28 +88,28 @@ def init_db(conn: any = None) {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     """);
-    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);");
+    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_resumes_user ON resumes(user_id);");
 
     # Applications table
     db_conn.execute("""
         CREATE TABLE IF NOT EXISTS applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            resume_id INTEGER,
             job_title TEXT NOT NULL,
             company TEXT NOT NULL,
+            resume_id INTEGER,
             job_url TEXT,
             status TEXT DEFAULT 'applied',
             applied_date TEXT,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE SET NULL
         );
     """);
-    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_applications_user_id ON applications(user_id);");
-    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_applications_resume_id ON applications(resume_id);");
-    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);");
+    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_user ON applications(user_id);");
+    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);");
 
     db_conn.commit();
 }
@@ -109,18 +118,105 @@ def row_to_dict(cur: any, row: any) -> dict[str, any] | None {
     if row is None {
         return None;
     }
-    cols = [col[0] for col in cur.description];
+    cols = [desc[0] for desc in cur.description];
     return dict(zip(cols, row));
+}
+
+# --- Password & Authentication Helpers ---
+
+def hash_password(password: str) -> str {
+    salt = secrets.token_hex(16);
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000);
+    return f"{salt}${dk.hex()}";
+}
+
+def verify_password(password: str, password_hash: str) -> bool {
+    if not password_hash or "$" not in password_hash {
+        return False;
+    }
+    parts = password_hash.split("$", 1);
+    salt = parts[0];
+    stored_hash = parts[1];
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000);
+    return hmac.compare_digest(dk.hex(), stored_hash);
+}
+
+def generate_session_token -> str {
+    return secrets.token_hex(24);
+}
+
+def register_user(
+    name: str,
+    email: str,
+    password: str,
+    phone: str | None = None,
+    conn: any = None
+) -> dict[str, any] {
+    if not name or not name.strip() {
+        raise ValueError("Name cannot be empty.");
+    }
+    if not email or not email.strip() {
+        raise ValueError("Email cannot be empty.");
+    }
+    if not password or not password.strip() {
+        raise ValueError("Password cannot be empty.");
+    }
+    normalized_email = email.strip().lower();
+    db_conn = conn if conn is not None else get_db_connection();
+    existing = get_user_by_email(normalized_email, conn=db_conn);
+    if existing is not None {
+        raise ValueError(f"User with email '{normalized_email}' already exists.");
+    }
+    pwd_hash = hash_password(password);
+    user = create_user(
+        name=name.strip(),
+        email=normalized_email,
+        phone=phone.strip() if phone else None,
+        password_hash=pwd_hash,
+        conn=db_conn
+    );
+    res = dict(user);
+    res.pop("password_hash", None);
+    return res;
+}
+
+def authenticate_user(email: str, password: str, conn: any = None) -> dict[str, any] | None {
+    if not email or not password {
+        return None;
+    }
+    normalized_email = email.strip().lower();
+    db_conn = conn if conn is not None else get_db_connection();
+    user = get_user_by_email(normalized_email, conn=db_conn);
+    if user is None {
+        return None;
+    }
+    pwd_hash = user.get("password_hash");
+    if not pwd_hash {
+        return None;
+    }
+    if not verify_password(password, pwd_hash) {
+        return None;
+    }
+    res = dict(user);
+    res.pop("password_hash", None);
+    res["session_token"] = generate_session_token();
+    return res;
 }
 
 # --- Users CRUD ---
 
-def create_user(name: str, email: str, phone: str | None = None, conn: any = None) -> dict[str, any] {
+def create_user(
+    name: str,
+    email: str,
+    phone: str | None = None,
+    password_hash: str | None = None,
+    conn: any = None
+) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute(
-        "INSERT INTO users (name, email, phone) VALUES (?, ?, ?)",
-        (name, email, phone)
+        "INSERT INTO users (name, email, phone, password_hash) VALUES (?, ?, ?, ?)",
+        (name, email, phone, password_hash)
     );
     db_conn.commit();
     user_id = cur.lastrowid;
@@ -135,14 +231,16 @@ def get_user_by_id(user_id: int, conn: any = None) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("SELECT * FROM users WHERE id = ?", (user_id,));
-    return row_to_dict(cur, cur.fetchone());
+    row = cur.fetchone();
+    return row_to_dict(cur, row);
 }
 
 def get_user_by_email(email: str, conn: any = None) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("SELECT * FROM users WHERE email = ?", (email,));
-    return row_to_dict(cur, cur.fetchone());
+    row = cur.fetchone();
+    return row_to_dict(cur, row);
 }
 
 def list_users(conn: any = None) -> list[dict[str, any]] {
@@ -150,14 +248,18 @@ def list_users(conn: any = None) -> list[dict[str, any]] {
     cur = db_conn.cursor();
     cur.execute("SELECT * FROM users ORDER BY id ASC");
     rows = cur.fetchall();
-    if not rows {
-        return [];
-    }
-    cols = [col[0] for col in cur.description];
+    cols = [desc[0] for desc in cur.description];
     return [dict(zip(cols, r)) for r in rows];
 }
 
-def update_user(user_id: int, name: str | None = None, email: str | None = None, phone: str | None = None, conn: any = None) -> dict[str, any] | None {
+def update_user(
+    user_id: int,
+    name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    password_hash: str | None = None,
+    conn: any = None
+) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     fields = [];
@@ -174,12 +276,17 @@ def update_user(user_id: int, name: str | None = None, email: str | None = None,
         fields.append("phone = ?");
         vals.append(phone);
     }
+    if password_hash is not None {
+        fields.append("password_hash = ?");
+        vals.append(password_hash);
+    }
     if not fields {
         return get_user_by_id(user_id, conn=db_conn);
     }
     fields.append("updated_at = CURRENT_TIMESTAMP");
     vals.append(user_id);
-    cur.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", tuple(vals));
+    sql = f"UPDATE users SET {', '.join(fields)} WHERE id = ?";
+    cur.execute(sql, tuple(vals));
     db_conn.commit();
     return get_user_by_id(user_id, conn=db_conn);
 }
@@ -194,7 +301,13 @@ def delete_user(user_id: int, conn: any = None) -> bool {
 
 # --- Resumes CRUD ---
 
-def create_resume(user_id: int, title: str, content: str | None = None, file_path: str | None = None, conn: any = None) -> dict[str, any] {
+def create_resume(
+    user_id: int,
+    title: str,
+    content: str | None = None,
+    file_path: str | None = None,
+    conn: any = None
+) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute(
@@ -214,7 +327,8 @@ def get_resume_by_id(resume_id: int, conn: any = None) -> dict[str, any] | None 
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("SELECT * FROM resumes WHERE id = ?", (resume_id,));
-    return row_to_dict(cur, cur.fetchone());
+    row = cur.fetchone();
+    return row_to_dict(cur, row);
 }
 
 def list_resumes_by_user(user_id: int, conn: any = None) -> list[dict[str, any]] {
@@ -222,14 +336,17 @@ def list_resumes_by_user(user_id: int, conn: any = None) -> list[dict[str, any]]
     cur = db_conn.cursor();
     cur.execute("SELECT * FROM resumes WHERE user_id = ? ORDER BY id ASC", (user_id,));
     rows = cur.fetchall();
-    if not rows {
-        return [];
-    }
-    cols = [col[0] for col in cur.description];
+    cols = [desc[0] for desc in cur.description];
     return [dict(zip(cols, r)) for r in rows];
 }
 
-def update_resume(resume_id: int, title: str | None = None, content: str | None = None, file_path: str | None = None, conn: any = None) -> dict[str, any] | None {
+def update_resume(
+    resume_id: int,
+    title: str | None = None,
+    content: str | None = None,
+    file_path: str | None = None,
+    conn: any = None
+) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     fields = [];
@@ -251,7 +368,8 @@ def update_resume(resume_id: int, title: str | None = None, content: str | None 
     }
     fields.append("updated_at = CURRENT_TIMESTAMP");
     vals.append(resume_id);
-    cur.execute(f"UPDATE resumes SET {', '.join(fields)} WHERE id = ?", tuple(vals));
+    sql = f"UPDATE resumes SET {', '.join(fields)} WHERE id = ?";
+    cur.execute(sql, tuple(vals));
     db_conn.commit();
     return get_resume_by_id(resume_id, conn=db_conn);
 }
@@ -279,13 +397,11 @@ def create_application(
 ) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
-    cur.execute(
-        """
-        INSERT INTO applications (user_id, resume_id, job_title, company, job_url, status, applied_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (user_id, resume_id, job_title, company, job_url, status, applied_date, notes)
-    );
+    cur.execute("""
+        INSERT INTO applications (
+            user_id, job_title, company, resume_id, job_url, status, applied_date, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, job_title, company, resume_id, job_url, status, applied_date, notes));
     db_conn.commit();
     app_id = cur.lastrowid;
     app = get_application_by_id(app_id, conn=db_conn);
@@ -295,31 +411,39 @@ def create_application(
     return app;
 }
 
-def get_application_by_id(application_id: int, conn: any = None) -> dict[str, any] | None {
+def get_application_by_id(app_id: int, conn: any = None) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
-    cur.execute("SELECT * FROM applications WHERE id = ?", (application_id,));
-    return row_to_dict(cur, cur.fetchone());
+    cur.execute("SELECT * FROM applications WHERE id = ?", (app_id,));
+    row = cur.fetchone();
+    return row_to_dict(cur, row);
 }
 
-def list_applications_by_user(user_id: int, status: str | None = None, conn: any = None) -> list[dict[str, any]] {
+def list_applications_by_user(
+    user_id: int,
+    status: str | None = None,
+    conn: any = None
+) -> list[dict[str, any]] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
-    if status is not None {
-        cur.execute("SELECT * FROM applications WHERE user_id = ? AND status = ? ORDER BY id ASC", (user_id, status));
+    if status {
+        cur.execute(
+            "SELECT * FROM applications WHERE user_id = ? AND status = ? ORDER BY id ASC",
+            (user_id, status)
+        );
     } else {
-        cur.execute("SELECT * FROM applications WHERE user_id = ? ORDER BY id ASC", (user_id,));
+        cur.execute(
+            "SELECT * FROM applications WHERE user_id = ? ORDER BY id ASC",
+            (user_id,)
+        );
     }
     rows = cur.fetchall();
-    if not rows {
-        return [];
-    }
-    cols = [col[0] for col in cur.description];
+    cols = [desc[0] for desc in cur.description];
     return [dict(zip(cols, r)) for r in rows];
 }
 
 def update_application(
-    application_id: int,
+    app_id: int,
     job_title: str | None = None,
     company: str | None = None,
     resume_id: int | None = None,
@@ -362,18 +486,20 @@ def update_application(
         vals.append(notes);
     }
     if not fields {
-        return get_application_by_id(application_id, conn=db_conn);
+        return get_application_by_id(app_id, conn=db_conn);
     }
-    vals.append(application_id);
-    cur.execute(f"UPDATE applications SET {', '.join(fields)} WHERE id = ?", tuple(vals));
+    fields.append("updated_at = CURRENT_TIMESTAMP");
+    vals.append(app_id);
+    sql = f"UPDATE applications SET {', '.join(fields)} WHERE id = ?";
+    cur.execute(sql, tuple(vals));
     db_conn.commit();
-    return get_application_by_id(application_id, conn=db_conn);
+    return get_application_by_id(app_id, conn=db_conn);
 }
 
-def delete_application(application_id: int, conn: any = None) -> bool {
+def delete_application(app_id: int, conn: any = None) -> bool {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
-    cur.execute("DELETE FROM applications WHERE id = ?", (application_id,));
+    cur.execute("DELETE FROM applications WHERE id = ?", (app_id,));
     db_conn.commit();
     return cur.rowcount > 0;
 }
