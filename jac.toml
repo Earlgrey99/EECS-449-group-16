@@ -2,7 +2,7 @@
 name = "EECS-449-group-16"
 version = "0.1.0"
 description = "Command-line Jac project"
-entry-point = "main.jac"
+entry-point = "main"
 kind = "cli"
 jac-version = "==0.37.11"
 
