@@ -15,7 +15,6 @@ import argparse;
 import csv;
 import datetime;
 import getpass;
-import io;
 import json;
 import os;
 import sys;
@@ -25,6 +24,7 @@ import urllib.request;
 import from unittest.mock { MagicMock, patch }
 import from db {
     get_db_connection,
+    load_env_file,
     init_db,
     hash_password,
     verify_password,
@@ -153,28 +153,6 @@ def table_Sheet(
         }
     }
     return application_table;
-}
-
-def load_env_file(filepath: str = ".env") {
-    if os.path.exists(filepath) {
-        try {
-            with open(filepath, "r") as f {
-                for raw_line in f {
-                    line = raw_line.strip();
-                    if line and not line.startswith("#") and "=" in line {
-                        (k, v) = line.split("=", 1);
-                        key_name = k.strip();
-                        val = v.strip().strip("'").strip("\"");
-                        if key_name and key_name not in os.environ {
-                            os.environ[key_name] = val;
-                        }
-                    }
-                }
-            }
-        } except Exception {
-            # Silently ignore .env read issues
-        }
-    }
 }
 
 def fetch(n: int, search: str, location: str | None = None, api_key: str | None = None) -> list[dict[str, any]] {

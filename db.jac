@@ -69,10 +69,10 @@ def init_db(conn: any = None) {
         );
     """);
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);");
-    try {
+    user_columns = db_conn.execute("PRAGMA table_info(users);").fetchall();
+    has_password_hash = any(column[1] == "password_hash" for column in user_columns);
+    if not has_password_hash {
         db_conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT;");
-    } except Exception {
-        # Column already exists or table was newly created
     }
 
     # Resumes table
