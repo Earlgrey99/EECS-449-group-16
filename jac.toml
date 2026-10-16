@@ -7,6 +7,10 @@ kind = "cli"
 jac-version = "==0.37.11"
 
 [dependencies]
+libsql = "~=0.1"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
+
+[check]
+suppress = ["W1037", "W3030"]

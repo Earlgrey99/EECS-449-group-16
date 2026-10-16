@@ -5,6 +5,8 @@ Add one by registering a parser in `build_parser` and a branch in `main`.
 
     jac run main.jac -- greet Ada --shout
     jac run main.jac -- fetch "software engineer" -n 5
+    jac run main.jac -- fetch "software engineer" -n 5 -l "New York"
+    jac run main.jac -- db-init
 """
 
 import argparse;
@@ -18,6 +20,26 @@ import tempfile;
 import urllib.error;
 import urllib.request;
 import from unittest.mock { MagicMock, patch }
+import from db {
+    get_db_connection,
+    init_db,
+    create_user,
+    get_user_by_id,
+    get_user_by_email,
+    list_users,
+    update_user,
+    delete_user,
+    create_resume,
+    get_resume_by_id,
+    list_resumes_by_user,
+    update_resume,
+    delete_resume,
+    create_application,
+    get_application_by_id,
+    list_applications_by_user,
+    update_application,
+    delete_application
+}
 
 glob APPLICATION_COLUMNS: list[str] = [
     "Company name",
@@ -148,7 +170,7 @@ def load_env_file(filepath: str = ".env") {
     }
 }
 
-def fetch(n: int, search: str, api_key: str | None = None) -> list[dict[str, any]] {
+def fetch(n: int, search: str, location: str | None = None, api_key: str | None = None) -> list[dict[str, any]] {
     if n <= 0 {
         return [];
     }
@@ -158,7 +180,11 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict[str, any
         raise ValueError("Jooble API key must be provided via JOOBLE_API_KEY env var, .env file, or --api-key argument.");
     }
     url = f"https://jooble.org/api/{key}";
-    body = json.dumps({"keywords": search, "ResultOnPage": n}).encode("utf-8");
+    req_payload = {"keywords": search, "ResultOnPage": n};
+    if location {
+        req_payload["location"] = location;
+    }
+    body = json.dumps(req_payload).encode("utf-8");
     req = urllib.request.Request(
         url,
         data=body,
@@ -166,7 +192,7 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict[str, any
     );
     try {
         with urllib.request.urlopen(req) as resp {
-            payload = json.loads(resp.read().decode("utf-8"));
+            resp_payload = json.loads(resp.read().decode("utf-8"));
         }
     } except urllib.error.HTTPError as e {
         raise RuntimeError(f"Jooble API HTTP error: {e.code} {e.reason}");
@@ -174,13 +200,14 @@ def fetch(n: int, search: str, api_key: str | None = None) -> list[dict[str, any
         raise RuntimeError(f"Jooble API network error: {e.reason}");
     }
 
-    raw_jobs = payload.get("jobs", []) if isinstance(payload, dict) else [];
+    raw_jobs = resp_payload.get("jobs", []) if isinstance(resp_payload, dict) else [];
     return raw_jobs[:n];
 }
 
-def parse_fetch_args(args: argparse.Namespace) -> tuple[int, str] {
-    n = 10;
+def parse_fetch_args(args: argparse.Namespace, location: str | None = None) -> tuple[int, str, str | None] {
+    n = 5;
     search = "";
+    loc = location if location is not None else args?.location;
     if args.count is not None {
         n = args.count;
     }
@@ -208,7 +235,7 @@ def parse_fetch_args(args: argparse.Namespace) -> tuple[int, str] {
             search = arg1;
         }
     }
-    return (n, search);
+    return (n, search, loc);
 }
 
 def build_parser -> argparse.ArgumentParser {
@@ -224,8 +251,9 @@ def build_parser -> argparse.ArgumentParser {
     fetch_cmd = commands.add_parser("fetch", help="Fetch job listings from Jooble");
     fetch_cmd.add_argument("arg1", nargs="?", `default=None, help="Search keyword or number of listings");
     fetch_cmd.add_argument("arg2", nargs="?", `default=None, help="Search keyword or number of listings");
-    fetch_cmd.add_argument("-n", "--count", type=int, `default=None, help="Number of job listings to return");
+    fetch_cmd.add_argument("-n", "--count", type=int, `default=None, help="Number of job listings to return (default: 5)");
     fetch_cmd.add_argument("-s", "--search", type=str, `default=None, help="Search keyword");
+    fetch_cmd.add_argument("-l", "--location", type=str, `default=None, help="Job location");
     fetch_cmd.add_argument("--api-key", type=str, `default=None, help="Jooble API key");
     fetch_cmd.add_argument("--json", action="store_true", help="Output results as JSON");
 
@@ -238,6 +266,10 @@ def build_parser -> argparse.ArgumentParser {
     table_cmd.add_argument("--resume-pdf", type=str, `default=None, help="Resume PDF used");
     table_cmd.add_argument("--cover-letter", type=str, `default=None, help="Cover letter");
     table_cmd.add_argument("--export-csv", type=str, `default=None, help="Write the table to a CSV file");
+
+    db_init_cmd = commands.add_parser("db-init", help="Initialize Turso database schema");
+    db_init_cmd.add_argument("--url", type=str, `default=None, help="Database URL");
+    db_init_cmd.add_argument("--token", type=str, `default=None, help="Auth token");
 
     return parser;
 }
@@ -270,24 +302,28 @@ def main(argv: list[str] | None = None) -> int {
         }
         return 0;
     } elif args.command == "fetch" {
-        (n, search) = parse_fetch_args(args);
+        (n, search, location) = parse_fetch_args(args);
         if not search {
             print("Error: 'search' argument is required.", file=sys.stderr);
             return 1;
         }
         try {
-            jobs = fetch(n, search, api_key=args.api_key);
+            jobs = fetch(n, search, location=location, api_key=args.api_key);
             if args.json {
                 print(json.dumps(jobs, indent=2));
             } else {
-                print(f"Found {len(jobs)} jobs for '{search}':\n");
+                if location {
+                    print(f"Found {len(jobs)} jobs for '{search}' in '{location}':\n");
+                } else {
+                    print(f"Found {len(jobs)} jobs for '{search}':\n");
+                }
                 for (idx, job) in enumerate(jobs, 1) {
                     title = job.get("title", "No title");
                     company = job.get("company", "Unknown company");
-                    location = job.get("location", "Unknown location");
+                    job_location = job.get("location", "Unknown location");
                     salary = job.get("salary", "");
                     link = job.get("link", "");
-                    print(f"{idx}. {title} - {company} ({location})");
+                    print(f"{idx}. {title} - {company} ({job_location})");
                     if salary {
                         print(f"   Salary: {salary}");
                     }
@@ -300,6 +336,16 @@ def main(argv: list[str] | None = None) -> int {
             return 0;
         } except Exception as e {
             print(f"Error fetching jobs: {str(e)}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "db-init" {
+        try {
+            conn = get_db_connection(database_url=args.url, auth_token=args.token);
+            init_db(conn=conn);
+            print("Database schema initialized successfully.");
+            return 0;
+        } except Exception as e {
+            print(f"Error initializing database: {str(e)}", file=sys.stderr);
             return 1;
         }
     }
@@ -384,25 +430,66 @@ test "table_Sheet validates date format and PDF files" {
 test "parse_fetch_args resolves arguments accurately" {
     parser = build_parser();
 
-    args1 = parser.parse_args(["fetch", "software", "-n", "5"]);
-    (n1, s1) = parse_fetch_args(args1);
-    assert n1 == 5;
+    args1 = parser.parse_args(["fetch", "software", "-n", "3"]);
+    (n1, s1, loc1) = parse_fetch_args(args1);
+    assert n1 == 3;
     assert s1 == "software";
+    assert loc1 is None;
 
-    args2 = parser.parse_args(["fetch", "5", "python"]);
-    (n2, s2) = parse_fetch_args(args2);
-    assert n2 == 5;
+    args2 = parser.parse_args(["fetch", "3", "python"]);
+    (n2, s2, loc2) = parse_fetch_args(args2);
+    assert n2 == 3;
     assert s2 == "python";
+    assert loc2 is None;
 
-    args3 = parser.parse_args(["fetch", "python", "5"]);
-    (n3, s3) = parse_fetch_args(args3);
-    assert n3 == 5;
+    args3 = parser.parse_args(["fetch", "python", "3"]);
+    (n3, s3, loc3) = parse_fetch_args(args3);
+    assert n3 == 3;
     assert s3 == "python";
+    assert loc3 is None;
 
     args4 = parser.parse_args(["fetch", "developer"]);
-    (n4, s4) = parse_fetch_args(args4);
-    assert n4 == 10;
+    (n4, s4, loc4) = parse_fetch_args(args4);
+    assert n4 == 5;
     assert s4 == "developer";
+    assert loc4 is None;
+}
+
+test "parse_fetch_args parses location argument" {
+    parser = build_parser();
+
+    args1 = parser.parse_args(["fetch", "software", "-l", "New York"]);
+    (n1, s1, loc1) = parse_fetch_args(args1);
+    assert n1 == 5;
+    assert s1 == "software";
+    assert loc1 == "New York";
+
+    args2 = parser.parse_args(["fetch", "engineer", "--location", "San Francisco, CA"]);
+    (n2, s2, loc2) = parse_fetch_args(args2);
+    assert n2 == 5;
+    assert s2 == "engineer";
+    assert loc2 == "San Francisco, CA";
+
+    args3 = parser.parse_args(["fetch", "designer", "-n", "2", "-l", "Remote"]);
+    (n3, s3, loc3) = parse_fetch_args(args3);
+    assert n3 == 2;
+    assert s3 == "designer";
+    assert loc3 == "Remote";
+
+    args4 = parser.parse_args(["fetch", "developer"]);
+    (n4, s4, loc4) = parse_fetch_args(args4, location="Chicago");
+    assert n4 == 5;
+    assert s4 == "developer";
+    assert loc4 == "Chicago";
+}
+
+test "fetch default count is 5" {
+    parser = build_parser();
+    args = parser.parse_args(["fetch", "designer"]);
+    (n, s, l) = parse_fetch_args(args);
+    assert n == 5;
+    assert s == "designer";
+    assert l is None;
 }
 
 test "fetch with n <= 0 returns empty list" {
@@ -463,6 +550,39 @@ test "fetch with mocked API response" {
     }
 }
 
+test "fetch includes location in payload when specified" {
+    mock_payload = {
+        "totalCount": 1,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Software Engineer",
+                "company": "Tech Corp",
+                "location": "Ann Arbor, MI"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen {
+        fetch(5, "engineer", location="Ann Arbor, MI", api_key="test-api-key");
+        assert mock_urlopen.called;
+        sent_req = mock_urlopen.call_args[0][0];
+        sent_payload = json.loads(sent_req.data.decode("utf-8"));
+        assert sent_payload["keywords"] == "engineer";
+        assert sent_payload["ResultOnPage"] == 5;
+        assert sent_payload["location"] == "Ann Arbor, MI";
+
+        fetch(5, "engineer", location=None, api_key="test-api-key");
+        sent_req_none = mock_urlopen.call_args[0][0];
+        sent_payload_none = json.loads(sent_req_none.data.decode("utf-8"));
+        assert "location" not in sent_payload_none;
+    }
+}
+
 test "main CLI runs fetch successfully" {
     mock_payload = {
         "totalCount": 1,
@@ -489,6 +609,215 @@ test "main CLI runs fetch successfully" {
         code_json = main(["fetch", "backend", "-n", "1", "--api-key", "test-api-key", "--json"]);
         assert code_json == 0;
     }
+}
+
+test "main CLI runs fetch with location successfully" {
+    mock_payload = {
+        "totalCount": 1,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Backend Engineer",
+                "company": "Jooble Partner",
+                "location": "New York, NY",
+                "salary": "$130,000",
+                "link": "https://jooble.org/desc/backend"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen {
+        code = main(["fetch", "backend", "-n", "1", "-l", "New York", "--api-key", "test-api-key"]);
+        assert code == 0;
+        sent_req = mock_urlopen.call_args[0][0];
+        sent_payload = json.loads(sent_req.data.decode("utf-8"));
+        assert sent_payload["location"] == "New York";
+
+        code_long = main(["fetch", "backend", "--location", "New York", "--api-key", "test-api-key"]);
+        assert code_long == 0;
+    }
+}
+
+# --- Database Tests ---
+
+test "get_db_connection without url raises ValueError" {
+    old_url1 = os.environ.get("TURSO_DATABASE_URL");
+    old_url2 = os.environ.get("TURSO_URL");
+    if old_url1 is not None {
+        del os.environ["TURSO_DATABASE_URL"];
+    }
+    if old_url2 is not None {
+        del os.environ["TURSO_URL"];
+    }
+    with patch("os.path.exists", return_value=False) {
+        with testraises(ValueError) {
+            get_db_connection(database_url=None, auth_token=None);
+        }
+    }
+    if old_url1 is not None {
+        os.environ["TURSO_DATABASE_URL"] = old_url1;
+    }
+    if old_url2 is not None {
+        os.environ["TURSO_URL"] = old_url2;
+    }
+}
+
+test "db-init initializes tables on in-memory database" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+    cur = conn.cursor();
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name ASC;");
+    tables = [r[0] for r in cur.fetchall()];
+    assert "users" in tables;
+    assert "resumes" in tables;
+    assert "applications" in tables;
+}
+
+test "CRUD operations on users" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = create_user("Alice Smith", "alice@example.com", "555-1234", conn=conn);
+    assert user["id"] == 1;
+    assert user["name"] == "Alice Smith";
+    assert user["email"] == "alice@example.com";
+    assert user["phone"] == "555-1234";
+
+    fetched = get_user_by_id(1, conn=conn);
+    assert fetched is not None;
+    assert fetched["email"] == "alice@example.com";
+
+    by_email = get_user_by_email("alice@example.com", conn=conn);
+    assert by_email is not None;
+    assert by_email["id"] == 1;
+
+    users = list_users(conn=conn);
+    assert len(users) == 1;
+
+    updated = update_user(1, name="Alice Johnson", phone="555-9999", conn=conn);
+    assert updated is not None;
+    assert updated["name"] == "Alice Johnson";
+    assert updated["phone"] == "555-9999";
+    assert updated["email"] == "alice@example.com";
+
+    deleted = delete_user(1, conn=conn);
+    assert deleted;
+    assert get_user_by_id(1, conn=conn) is None;
+}
+
+test "CRUD operations on resumes" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = create_user("Bob Jones", "bob@example.com", conn=conn);
+    u_id = user["id"];
+
+    resume = create_resume(u_id, "Software Engineer Resume", "Python, Jac, SQL", "resumes/bob.pdf", conn=conn);
+    assert resume["id"] == 1;
+    assert resume["user_id"] == u_id;
+    assert resume["title"] == "Software Engineer Resume";
+    assert resume["file_path"] == "resumes/bob.pdf";
+
+    fetched = get_resume_by_id(1, conn=conn);
+    assert fetched is not None;
+    assert fetched["title"] == "Software Engineer Resume";
+
+    resumes = list_resumes_by_user(u_id, conn=conn);
+    assert len(resumes) == 1;
+
+    updated = update_resume(1, title="Senior SWE Resume", file_path="resumes/bob_v2.pdf", conn=conn);
+    assert updated is not None;
+    assert updated["title"] == "Senior SWE Resume";
+    assert updated["file_path"] == "resumes/bob_v2.pdf";
+
+    deleted = delete_resume(1, conn=conn);
+    assert deleted;
+    assert get_resume_by_id(1, conn=conn) is None;
+}
+
+test "CRUD operations on applications" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    user = create_user("Charlie", "charlie@example.com", conn=conn);
+    resume = create_resume(user["id"], "General", conn=conn);
+
+    app = create_application(
+        user["id"],
+        "Backend Developer",
+        "Acme Corp",
+        resume_id=resume["id"],
+        job_url="https://acme.com/jobs/1",
+        status="applied",
+        applied_date="2026-10-09",
+        notes="Applied via website",
+        conn=conn
+    );
+    assert app["id"] == 1;
+    assert app["job_title"] == "Backend Developer";
+    assert app["company"] == "Acme Corp";
+    assert app["status"] == "applied";
+
+    fetched = get_application_by_id(1, conn=conn);
+    assert fetched is not None;
+    assert fetched["company"] == "Acme Corp";
+
+    all_apps = list_applications_by_user(user["id"], conn=conn);
+    assert len(all_apps) == 1;
+
+    applied_apps = list_applications_by_user(user["id"], status="applied", conn=conn);
+    assert len(applied_apps) == 1;
+
+    interviewing_apps = list_applications_by_user(user["id"], status="interviewing", conn=conn);
+    assert len(interviewing_apps) == 0;
+
+    updated = update_application(1, status="interviewing", notes="First round scheduled", conn=conn);
+    assert updated is not None;
+    assert updated["status"] == "interviewing";
+    assert updated["notes"] == "First round scheduled";
+
+    deleted = delete_application(1, conn=conn);
+    assert deleted;
+    assert get_application_by_id(1, conn=conn) is None;
+}
+
+test "Foreign key enforcement and cascading deletes" {
+    conn = get_db_connection(database_url=":memory:");
+    init_db(conn=conn);
+
+    with testraises(Exception) {
+        create_resume(999, "Invalid Resume", conn=conn);
+    }
+
+    with testraises(Exception) {
+        create_application(999, "Engineer", "TechCorp", conn=conn);
+    }
+
+    user = create_user("Dave", "dave@example.com", conn=conn);
+    resume = create_resume(user["id"], "Dave Resume", conn=conn);
+    app = create_application(user["id"], "SWE", "BigCo", resume_id=resume["id"], conn=conn);
+
+    delete_user(user["id"], conn=conn);
+    assert get_resume_by_id(resume["id"], conn=conn) is None;
+    assert get_application_by_id(app["id"], conn=conn) is None;
+
+    user2 = create_user("Eve", "eve@example.com", conn=conn);
+    resume2 = create_resume(user2["id"], "Eve Resume", conn=conn);
+    app2 = create_application(user2["id"], "SWE", "Startup", resume_id=resume2["id"], conn=conn);
+
+    delete_resume(resume2["id"], conn=conn);
+    updated_app2 = get_application_by_id(app2["id"], conn=conn);
+    assert updated_app2 is not None;
+    assert updated_app2["resume_id"] is None;
+}
+
+test "main CLI runs db-init successfully" {
+    code = main(["db-init", "--url", ":memory:"]);
+    assert code == 0;
 }
 
 with entry:__main__ {
