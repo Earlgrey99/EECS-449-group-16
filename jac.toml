@@ -14,3 +14,10 @@ watchdog = ">=3.0.0"
 
 [check]
 suppress = ["W1037", "W3030"]
+
+[jacpack]
+name = 'EECS-449-group-16'
+description = 'Jac IDE snapshot for EECS-449-group-16'
+
+[jachammer]
+project_id = "prj_bf9c70c000554c7c849fc474521eea84"
