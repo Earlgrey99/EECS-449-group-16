@@ -1627,3 +1627,12 @@ test "main CLI runs signup and login commands" {
 with entry:__main__ {
     sys.`exit(main());
 }
+
+# --- Web UI (Jaccit job application platform) ---
+
+import from services.jobs { list_jobs }
+import ".styles.global.css";
+
+def:pub app(children: any) -> JsxElement {
+    return <>{children}</>;
+}

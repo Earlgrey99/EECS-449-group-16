@@ -3,7 +3,7 @@ name = "EECS-449-group-16"
 version = "0.1.0"
 description = "Command-line Jac project"
 entry-point = "main"
-kind = "cli"
+kind = "fullstack"
 jac-version = "==0.37.11"
 
 [dependencies]
@@ -21,3 +21,39 @@ description = 'Jac IDE snapshot for EECS-449-group-16'
 
 [jachammer]
 project_id = "prj_bf9c70c000554c7c849fc474521eea84"
+
+[serve]
+base_route_app = "app"
+
+[jac-shadcn]
+style = "vega"
+baseColor = "neutral"
+theme = "indigo"
+font = "figtree"
+radius = "default"
+menuAccent = "bold"
+menuColor = "default"
+[dependencies.npm]
+tw-animate-css = "latest"
+shadcn = "latest"
+"@fontsource-variable/figtree" = "latest"
+"@hugeicons/react" = "latest"
+"@hugeicons/core-free-icons" = "latest"
+"class-variance-authority" = "latest"
+"clsx" = "latest"
+"tailwind-merge" = "latest"
+"lucide-react" = "latest"
+"sonner" = "latest"
+"radix-ui" = "latest"
+
+[dependencies.npm.dev]
+tailwindcss = "latest"
+"@tailwindcss/vite" = "latest"
+
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
