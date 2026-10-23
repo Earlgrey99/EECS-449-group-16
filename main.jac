@@ -6,6 +6,7 @@ Add one by registering a parser in `build_parser` and a branch in `main`.
     jac run main.jac -- greet Ada --shout
     jac run main.jac -- fetch "software engineer" -n 5
     jac run main.jac -- fetch "software engineer" -n 5 -l "New York"
+    jac run main.jac -- fetch "software engineer" --salary 100000 -t "full-time" -c "Google"
     jac run main.jac -- db-init
     jac run main.jac -- signup --name "Ada Lovelace" --email "ada@example.com"
     jac run main.jac -- login --email "ada@example.com"
@@ -15,8 +16,10 @@ import argparse;
 import csv;
 import datetime;
 import getpass;
+import io;
 import json;
 import os;
+import re;
 import sys;
 import tempfile;
 import urllib.error;
@@ -155,7 +158,69 @@ def table_Sheet(
     return application_table;
 }
 
-def fetch(n: int, search: str, location: str | None = None, api_key: str | None = None) -> list[dict[str, any]] {
+def _extract_salary_values(salary_val: any) -> list[float] {
+    if salary_val is None {
+        return [];
+    }
+    if isinstance(salary_val, (int, float)) {
+        return [float(salary_val)];
+    }
+    text = str(salary_val).strip();
+    if not text {
+        return [];
+    }
+    cleaned = text.replace(",", "");
+    matches = re.findall(r"(\d+(?:\.\d+)?)\s*([kK])?", cleaned);
+    values: list[float] = [];
+    for (num_str, k_suffix) in matches {
+        try {
+            val = float(num_str);
+            if k_suffix.lower() == "k" {
+                val = val * 1000.0;
+            }
+            values.append(val);
+        } except ValueError {
+            continue;
+        }
+    }
+    return values;
+}
+
+def _matches_contract_type(job_type: any, target_type: str) -> bool {
+    if not job_type or not target_type {
+        return False;
+    }
+    jt = str(job_type).strip().lower();
+    tt = str(target_type).strip().lower();
+    if tt == jt or tt in jt {
+        return True;
+    }
+    jt_norm = jt.replace("-", " ");
+    tt_norm = tt.replace("-", " ");
+    if tt_norm == jt_norm or tt_norm in jt_norm {
+        return True;
+    }
+    return False;
+}
+
+def _matches_company(job_company: any, target_company: str) -> bool {
+    if not job_company or not target_company {
+        return False;
+    }
+    jc = str(job_company).strip().lower();
+    tc = str(target_company).strip().lower();
+    return tc in jc;
+}
+
+def fetch(
+    n: int,
+    search: str,
+    location: str | None = None,
+    salary: int | None = None,
+    contract_type: str | None = None,
+    company: str | None = None,
+    api_key: str | None = None
+) -> list[dict[str, any]] {
     if n <= 0 {
         return [];
     }
@@ -168,6 +233,9 @@ def fetch(n: int, search: str, location: str | None = None, api_key: str | None 
     req_payload = {"keywords": search, "ResultOnPage": n};
     if location {
         req_payload["location"] = location;
+    }
+    if salary is not None {
+        req_payload["salary"] = int(salary);
     }
     body = json.dumps(req_payload).encode("utf-8");
     req = urllib.request.Request(
@@ -186,41 +254,74 @@ def fetch(n: int, search: str, location: str | None = None, api_key: str | None 
     }
 
     raw_jobs = resp_payload.get("jobs", []) if isinstance(resp_payload, dict) else [];
-    return raw_jobs[:n];
+    filtered_jobs = [];
+    for job in raw_jobs {
+        if company is not None and str(company).strip() != "" {
+            if not _matches_company(job.get("company"), str(company).strip()) {
+                continue;
+            }
+        }
+        if contract_type is not None and str(contract_type).strip() != "" {
+            if not _matches_contract_type(job.get("type"), str(contract_type).strip()) {
+                continue;
+            }
+        }
+        if salary is not None {
+            sal_vals = _extract_salary_values(job.get("salary"));
+            if not sal_vals or max(sal_vals) < int(salary) {
+                continue;
+            }
+        }
+        filtered_jobs.append(job);
+    }
+    return filtered_jobs[:n];
 }
 
-def parse_fetch_args(args: argparse.Namespace, location: str | None = None) -> tuple[int, str, str | None] {
+def parse_fetch_args(
+    args: argparse.Namespace,
+    location: str | None = None,
+    salary: int | None = None,
+    contract_type: str | None = None,
+    company: str | None = None
+) -> tuple[int, str, str | None, int | None, str | None, str | None] {
     n = 5;
     search = "";
     loc = location if location is not None else args?.location;
-    if args.count is not None {
+    sal = salary if salary is not None else args?.salary;
+    if sal is not None {
+        sal = int(sal);
+    }
+    ctype = contract_type if contract_type is not None else args?.contract_type;
+    comp = company if company is not None else args?.company;
+
+    if args?.count is not None {
         n = args.count;
     }
-    if args.search is not None {
+    if args?.search is not None {
         search = args.search;
     }
 
-    arg1 = args.arg1;
-    arg2 = args.arg2;
+    arg1 = args?.arg1;
+    arg2 = args?.arg2;
 
     if arg1 is not None and arg2 is not None {
-        if arg1.isdigit() {
+        if str(arg1).isdigit() {
             n = int(arg1);
             search = arg2;
-        } elif arg2.isdigit() {
+        } elif str(arg2).isdigit() {
             search = arg1;
             n = int(arg2);
         } else {
             search = f"{arg1} {arg2}";
         }
     } elif arg1 is not None {
-        if arg1.isdigit() {
+        if str(arg1).isdigit() {
             n = int(arg1);
         } else {
             search = arg1;
         }
     }
-    return (n, search, loc);
+    return (n, search, loc, sal, ctype, comp);
 }
 
 def build_parser -> argparse.ArgumentParser {
@@ -239,6 +340,9 @@ def build_parser -> argparse.ArgumentParser {
     fetch_cmd.add_argument("-n", "--count", type=int, `default=None, help="Number of job listings to return (default: 5)");
     fetch_cmd.add_argument("-s", "--search", type=str, `default=None, help="Search keyword");
     fetch_cmd.add_argument("-l", "--location", type=str, `default=None, help="Job location");
+    fetch_cmd.add_argument("-S", "--salary", "--min-salary", dest="salary", type=int, `default=None, help="Minimum desired salary threshold");
+    fetch_cmd.add_argument("-t", "--contract-type", "--type", dest="contract_type", type=str, `default=None, help="Contract or employment type (e.g. full-time, part-time, contract, internship)");
+    fetch_cmd.add_argument("-c", "--company", dest="company", type=str, `default=None, help="Target company name");
     fetch_cmd.add_argument("--api-key", type=str, `default=None, help="Jooble API key");
     fetch_cmd.add_argument("--json", action="store_true", help="Output results as JSON");
 
@@ -301,30 +405,55 @@ def main(argv: list[str] | None = None) -> int {
         }
         return 0;
     } elif args.command == "fetch" {
-        (n, search, location) = parse_fetch_args(args);
+        (n, search, location, salary, contract_type, company) = parse_fetch_args(args);
         if not search {
             print("Error: 'search' argument is required.", file=sys.stderr);
             return 1;
         }
         try {
-            jobs = fetch(n, search, location=location, api_key=args.api_key);
+            jobs = fetch(
+                n,
+                search,
+                location=location,
+                salary=salary,
+                contract_type=contract_type,
+                company=company,
+                api_key=args.api_key
+            );
             if args.json {
                 print(json.dumps(jobs, indent=2));
             } else {
+                header = f"Found {len(jobs)} jobs for '{search}'";
                 if location {
-                    print(f"Found {len(jobs)} jobs for '{search}' in '{location}':\n");
-                } else {
-                    print(f"Found {len(jobs)} jobs for '{search}':\n");
+                    header = f"{header} in '{location}'";
                 }
+                filters_desc = [];
+                if company {
+                    filters_desc.append(f"company: '{company}'");
+                }
+                if contract_type {
+                    filters_desc.append(f"contract type: '{contract_type}'");
+                }
+                if salary is not None {
+                    filters_desc.append(f"salary >= {salary}");
+                }
+                if filters_desc {
+                    header = f"{header} (filters: {', '.join(filters_desc)})";
+                }
+                print(f"{header}:\n");
                 for (idx, job) in enumerate(jobs, 1) {
                     title = job.get("title", "No title");
-                    company = job.get("company", "Unknown company");
+                    job_company = job.get("company", "Unknown company");
                     job_location = job.get("location", "Unknown location");
-                    salary = job.get("salary", "");
+                    salary_str = job.get("salary", "");
+                    job_type = job.get("type", "");
                     link = job.get("link", "");
-                    print(f"{idx}. {title} - {company} ({job_location})");
-                    if salary {
-                        print(f"   Salary: {salary}");
+                    print(f"{idx}. {title} - {job_company} ({job_location})");
+                    if job_type {
+                        print(f"   Contract Type: {job_type}");
+                    }
+                    if salary_str {
+                        print(f"   Salary: {salary_str}");
                     }
                     if link {
                         print(f"   Link: {link}");
@@ -471,53 +600,68 @@ test "parse_fetch_args resolves arguments accurately" {
     parser = build_parser();
 
     args1 = parser.parse_args(["fetch", "software", "-n", "3"]);
-    (n1, s1, loc1) = parse_fetch_args(args1);
+    (n1, s1, loc1, sal1, ctype1, comp1) = parse_fetch_args(args1);
     assert n1 == 3;
     assert s1 == "software";
     assert loc1 is None;
+    assert sal1 is None;
+    assert ctype1 is None;
+    assert comp1 is None;
 
     args2 = parser.parse_args(["fetch", "3", "python"]);
-    (n2, s2, loc2) = parse_fetch_args(args2);
+    (n2, s2, loc2, sal2, ctype2, comp2) = parse_fetch_args(args2);
     assert n2 == 3;
     assert s2 == "python";
     assert loc2 is None;
+    assert sal2 is None;
+    assert ctype2 is None;
+    assert comp2 is None;
 
     args3 = parser.parse_args(["fetch", "python", "3"]);
-    (n3, s3, loc3) = parse_fetch_args(args3);
+    (n3, s3, loc3, sal3, ctype3, comp3) = parse_fetch_args(args3);
     assert n3 == 3;
     assert s3 == "python";
     assert loc3 is None;
+    assert sal3 is None;
+    assert ctype3 is None;
+    assert comp3 is None;
 
     args4 = parser.parse_args(["fetch", "developer"]);
-    (n4, s4, loc4) = parse_fetch_args(args4);
+    (n4, s4, loc4, sal4, ctype4, comp4) = parse_fetch_args(args4);
     assert n4 == 5;
     assert s4 == "developer";
     assert loc4 is None;
+    assert sal4 is None;
+    assert ctype4 is None;
+    assert comp4 is None;
 }
 
 test "parse_fetch_args parses location argument" {
     parser = build_parser();
 
     args1 = parser.parse_args(["fetch", "software", "-l", "New York"]);
-    (n1, s1, loc1) = parse_fetch_args(args1);
+    (n1, s1, loc1, sal1, ctype1, comp1) = parse_fetch_args(args1);
     assert n1 == 5;
     assert s1 == "software";
     assert loc1 == "New York";
+    assert sal1 is None;
+    assert ctype1 is None;
+    assert comp1 is None;
 
     args2 = parser.parse_args(["fetch", "engineer", "--location", "San Francisco, CA"]);
-    (n2, s2, loc2) = parse_fetch_args(args2);
+    (n2, s2, loc2, sal2, ctype2, comp2) = parse_fetch_args(args2);
     assert n2 == 5;
     assert s2 == "engineer";
     assert loc2 == "San Francisco, CA";
 
     args3 = parser.parse_args(["fetch", "designer", "-n", "2", "-l", "Remote"]);
-    (n3, s3, loc3) = parse_fetch_args(args3);
+    (n3, s3, loc3, sal3, ctype3, comp3) = parse_fetch_args(args3);
     assert n3 == 2;
     assert s3 == "designer";
     assert loc3 == "Remote";
 
     args4 = parser.parse_args(["fetch", "developer"]);
-    (n4, s4, loc4) = parse_fetch_args(args4, location="Chicago");
+    (n4, s4, loc4, sal4, ctype4, comp4) = parse_fetch_args(args4, location="Chicago");
     assert n4 == 5;
     assert s4 == "developer";
     assert loc4 == "Chicago";
@@ -526,10 +670,85 @@ test "parse_fetch_args parses location argument" {
 test "fetch default count is 5" {
     parser = build_parser();
     args = parser.parse_args(["fetch", "designer"]);
-    (n, s, l) = parse_fetch_args(args);
+    (n, s, l, sal, ctype, comp) = parse_fetch_args(args);
     assert n == 5;
     assert s == "designer";
     assert l is None;
+    assert sal is None;
+    assert ctype is None;
+    assert comp is None;
+}
+
+test "parse_fetch_args parses salary, contract type, and company arguments" {
+    parser = build_parser();
+
+    # Salary flags
+    args_sal1 = parser.parse_args(["fetch", "engineer", "--salary", "100000"]);
+    (n1, s1, loc1, sal1, ctype1, comp1) = parse_fetch_args(args_sal1);
+    assert sal1 == 100000;
+
+    args_sal2 = parser.parse_args(["fetch", "engineer", "-S", "85000"]);
+    (n2, s2, loc2, sal2, ctype2, comp2) = parse_fetch_args(args_sal2);
+    assert sal2 == 85000;
+
+    args_sal3 = parser.parse_args(["fetch", "engineer", "--min-salary", "95000"]);
+    (n3, s3, loc3, sal3, ctype3, comp3) = parse_fetch_args(args_sal3);
+    assert sal3 == 95000;
+
+    # Contract type flags
+    args_type1 = parser.parse_args(["fetch", "developer", "-t", "full-time"]);
+    (n4, s4, loc4, sal4, ctype4, comp4) = parse_fetch_args(args_type1);
+    assert ctype4 == "full-time";
+
+    args_type2 = parser.parse_args(["fetch", "developer", "--contract-type", "contract"]);
+    (n5, s5, loc5, sal5, ctype5, comp5) = parse_fetch_args(args_type2);
+    assert ctype5 == "contract";
+
+    args_type3 = parser.parse_args(["fetch", "developer", "--type", "part-time"]);
+    (n6, s6, loc6, sal6, ctype6, comp6) = parse_fetch_args(args_type3);
+    assert ctype6 == "part-time";
+
+    # Company flags
+    args_comp1 = parser.parse_args(["fetch", "manager", "-c", "Google"]);
+    (n7, s7, loc7, sal7, ctype7, comp7) = parse_fetch_args(args_comp1);
+    assert comp7 == "Google";
+
+    args_comp2 = parser.parse_args(["fetch", "manager", "--company", "Amazon"]);
+    (n8, s8, loc8, sal8, ctype8, comp8) = parse_fetch_args(args_comp2);
+    assert comp8 == "Amazon";
+
+    # Explicit keyword argument overrides
+    args_base = parser.parse_args(["fetch", "tester"]);
+    (n9, s9, loc9, sal9, ctype9, comp9) = parse_fetch_args(
+        args_base,
+        location="Austin, TX",
+        salary=120000,
+        contract_type="internship",
+        company="Apple"
+    );
+    assert loc9 == "Austin, TX";
+    assert sal9 == 120000;
+    assert ctype9 == "internship";
+    assert comp9 == "Apple";
+}
+
+test "parse_fetch_args parses combined filter arguments" {
+    parser = build_parser();
+    args = parser.parse_args([
+        "fetch", "data scientist",
+        "-l", "New York",
+        "--salary", "120000",
+        "-t", "full-time",
+        "-c", "Amazon",
+        "-n", "5"
+    ]);
+    (n, search, loc, sal, ctype, comp) = parse_fetch_args(args);
+    assert n == 5;
+    assert search == "data scientist";
+    assert loc == "New York";
+    assert sal == 120000;
+    assert ctype == "full-time";
+    assert comp == "Amazon";
 }
 
 test "fetch with n <= 0 returns empty list" {
@@ -679,6 +898,395 @@ test "main CLI runs fetch with location successfully" {
 
         code_long = main(["fetch", "backend", "--location", "New York", "--api-key", "test-api-key"]);
         assert code_long == 0;
+    }
+}
+
+test "fetch includes salary in payload when specified" {
+    mock_payload = {
+        "totalCount": 1,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Software Engineer",
+                "company": "Tech Corp",
+                "location": "Ann Arbor, MI",
+                "salary": "$125,000"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen {
+        fetch(5, "engineer", salary=100000, api_key="test-api-key");
+        assert mock_urlopen.called;
+        sent_req = mock_urlopen.call_args[0][0];
+        sent_payload = json.loads(sent_req.data.decode("utf-8"));
+        assert sent_payload["keywords"] == "engineer";
+        assert sent_payload["ResultOnPage"] == 5;
+        assert sent_payload["salary"] == 100000;
+
+        fetch(5, "engineer", salary=None, api_key="test-api-key");
+        sent_req_none = mock_urlopen.call_args[0][0];
+        sent_payload_none = json.loads(sent_req_none.data.decode("utf-8"));
+        assert "salary" not in sent_payload_none;
+    }
+}
+
+test "fetch filters listings by company name" {
+    mock_payload = {
+        "totalCount": 3,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Backend Engineer",
+                "company": "Google LLC",
+                "location": "Mountain View, CA"
+            },
+            {
+                "id": "2",
+                "title": "Frontend Engineer",
+                "company": "Amazon AWS",
+                "location": "Seattle, WA"
+            },
+            {
+                "id": "3",
+                "title": "Site Reliability Engineer",
+                "company": "Google Cloud",
+                "location": "Sunnyvale, CA"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) {
+        # Case-insensitive substring match
+        res_google = fetch(5, "engineer", company="Google", api_key="test-api-key");
+        assert len(res_google) == 2;
+        assert res_google[0]["company"] == "Google LLC";
+        assert res_google[1]["company"] == "Google Cloud";
+
+        res_amazon = fetch(5, "engineer", company="amazon", api_key="test-api-key");
+        assert len(res_amazon) == 1;
+        assert res_amazon[0]["company"] == "Amazon AWS";
+
+        res_none = fetch(5, "engineer", company="Microsoft", api_key="test-api-key");
+        assert len(res_none) == 0;
+    }
+}
+
+test "fetch filters listings by contract type" {
+    mock_payload = {
+        "totalCount": 4,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Full Stack Dev",
+                "company": "Alpha",
+                "type": "Full-time"
+            },
+            {
+                "id": "2",
+                "title": "Junior Dev",
+                "company": "Beta",
+                "type": "Part-time"
+            },
+            {
+                "id": "3",
+                "title": "Contractor",
+                "company": "Gamma",
+                "type": "Contract"
+            },
+            {
+                "id": "4",
+                "title": "Intern",
+                "company": "Delta"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) {
+        # Case-insensitive match & hyphen normalization
+        res_ft = fetch(5, "dev", contract_type="full-time", api_key="test-api-key");
+        assert len(res_ft) == 1;
+        assert res_ft[0]["title"] == "Full Stack Dev";
+
+        res_ft_space = fetch(5, "dev", contract_type="full time", api_key="test-api-key");
+        assert len(res_ft_space) == 1;
+        assert res_ft_space[0]["title"] == "Full Stack Dev";
+
+        res_contract = fetch(5, "dev", contract_type="contract", api_key="test-api-key");
+        assert len(res_contract) == 1;
+        assert res_contract[0]["title"] == "Contractor";
+
+        res_missing = fetch(5, "dev", contract_type="internship", api_key="test-api-key");
+        assert len(res_missing) == 0;
+    }
+}
+
+test "fetch filters listings by salary threshold" {
+    mock_payload = {
+        "totalCount": 5,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Principal Engineer",
+                "salary": "$150,000"
+            },
+            {
+                "id": "2",
+                "title": "Junior Engineer",
+                "salary": "$75,000"
+            },
+            {
+                "id": "3",
+                "title": "Staff Engineer",
+                "salary": "$110,000 - $140,000"
+            },
+            {
+                "id": "4",
+                "title": "Lead Engineer",
+                "salary": "$120k"
+            },
+            {
+                "id": "5",
+                "title": "Undisclosed Engineer",
+                "salary": ""
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) {
+        # Threshold: 100000
+        # Expected: id 1 ($150k), id 3 ($110-140k), id 4 ($120k)
+        # Excluded: id 2 ($75k), id 5 (empty)
+        res_100k = fetch(5, "engineer", salary=100000, api_key="test-api-key");
+        assert len(res_100k) == 3;
+        ids_100k = [j["id"] for j in res_100k];
+        assert "1" in ids_100k;
+        assert "3" in ids_100k;
+        assert "4" in ids_100k;
+        assert "2" not in ids_100k;
+        assert "5" not in ids_100k;
+
+        # Higher threshold: 130000
+        # Expected: id 1 ($150k), id 3 ($140k max)
+        res_130k = fetch(5, "engineer", salary=130000, api_key="test-api-key");
+        assert len(res_130k) == 2;
+        ids_130k = [j["id"] for j in res_130k];
+        assert "1" in ids_130k;
+        assert "3" in ids_130k;
+    }
+}
+
+test "fetch filters listings by combined filters" {
+    mock_payload = {
+        "totalCount": 4,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Senior Data Scientist",
+                "company": "Amazon Web Services",
+                "location": "New York, NY",
+                "salary": "$135,000",
+                "type": "Full-time"
+            },
+            {
+                "id": "2",
+                "title": "Data Scientist",
+                "company": "Amazon",
+                "location": "New York, NY",
+                "salary": "$90,000",
+                "type": "Full-time"
+            },
+            {
+                "id": "3",
+                "title": "Data Scientist",
+                "company": "Amazon",
+                "location": "New York, NY",
+                "salary": "$140,000",
+                "type": "Contract"
+            },
+            {
+                "id": "4",
+                "title": "Data Scientist",
+                "company": "Google",
+                "location": "New York, NY",
+                "salary": "$150,000",
+                "type": "Full-time"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    with patch("urllib.request.urlopen", return_value=mock_cm) {
+        # Only job 1 matches: company contains Amazon, salary >= 120000, type is full-time
+        res = fetch(
+            5,
+            "data scientist",
+            location="New York",
+            salary=120000,
+            contract_type="full-time",
+            company="Amazon",
+            api_key="test-api-key"
+        );
+        assert len(res) == 1;
+        assert res[0]["id"] == "1";
+        assert res[0]["company"] == "Amazon Web Services";
+        assert res[0]["type"] == "Full-time";
+    }
+}
+
+test "main CLI runs fetch with combined filters and outputs criteria and contract type" {
+    mock_payload = {
+        "totalCount": 2,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Staff ML Engineer",
+                "company": "Amazon AI",
+                "location": "New York, NY",
+                "salary": "$160,000",
+                "type": "Full-time",
+                "link": "https://jooble.org/desc/1"
+            },
+            {
+                "id": "2",
+                "title": "Junior ML Engineer",
+                "company": "Amazon AI",
+                "location": "New York, NY",
+                "salary": "$80,000",
+                "type": "Part-time",
+                "link": "https://jooble.org/desc/2"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    buf: io.StringIO = io.StringIO();
+    with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen, patch("sys.stdout", buf) {
+        # Test standard output
+        code = main([
+            "fetch", "machine learning",
+            "-l", "New York",
+            "--salary", "120000",
+            "-t", "full-time",
+            "-c", "Amazon",
+            "--api-key", "test-api-key"
+        ]);
+        assert code == 0;
+        sent_req = mock_urlopen.call_args[0][0];
+        sent_payload = json.loads(sent_req.data.decode("utf-8"));
+        assert sent_payload["salary"] == 120000;
+        assert sent_payload["location"] == "New York";
+
+        out = buf.getvalue();
+        assert "Found 1 jobs for 'machine learning' in 'New York'" in out;
+        assert "salary >= 120000" in out;
+        assert "contract type: 'full-time'" in out;
+        assert "company: 'Amazon'" in out;
+        assert "Staff ML Engineer - Amazon AI (New York, NY)" in out;
+        assert "Contract Type: Full-time" in out;
+        assert "Salary: $160,000" in out;
+    }
+
+    buf_json: io.StringIO = io.StringIO();
+    with patch("urllib.request.urlopen", return_value=mock_cm), patch("sys.stdout", buf_json) {
+        # Test --json output
+        code_json = main([
+            "fetch", "machine learning",
+            "-l", "New York",
+            "-S", "120000",
+            "--contract-type", "full-time",
+            "--company", "Amazon",
+            "--api-key", "test-api-key",
+            "--json"
+        ]);
+        assert code_json == 0;
+        json_out = json.loads(buf_json.getvalue());
+        assert len(json_out) == 1;
+        assert json_out[0]["id"] == "1";
+        assert json_out[0]["company"] == "Amazon AI";
+    }
+}
+
+test "main CLI runs fetch with individual filters and displays criteria accurately" {
+    mock_payload = {
+        "totalCount": 2,
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Software Engineer",
+                "company": "Google",
+                "location": "Mountain View, CA",
+                "salary": "$150,000",
+                "type": "Full-time"
+            },
+            {
+                "id": "2",
+                "title": "Software Engineer",
+                "company": "Amazon",
+                "location": "Seattle, WA",
+                "salary": "$90,000"
+            }
+        ]
+    };
+    mock_response = MagicMock();
+    mock_response.read.return_value = json.dumps(mock_payload).encode("utf-8");
+    mock_cm = MagicMock();
+    mock_cm.__enter__.return_value = mock_response;
+
+    # Individual salary filter
+    buf_sal: io.StringIO = io.StringIO();
+    with patch("urllib.request.urlopen", return_value=mock_cm), patch("sys.stdout", buf_sal) {
+        code = main(["fetch", "software", "--salary", "120000", "--api-key", "test-api-key"]);
+        assert code == 0;
+        out = buf_sal.getvalue();
+        assert "Found 1 jobs for 'software' (filters: salary >= 120000):" in out;
+        assert "Google" in out;
+        assert "Amazon" not in out;
+    }
+
+    # Individual contract-type filter
+    buf_type: io.StringIO = io.StringIO();
+    with patch("urllib.request.urlopen", return_value=mock_cm), patch("sys.stdout", buf_type) {
+        code = main(["fetch", "software", "-t", "full-time", "--api-key", "test-api-key"]);
+        assert code == 0;
+        out = buf_type.getvalue();
+        assert "Found 1 jobs for 'software' (filters: contract type: 'full-time'):" in out;
+        assert "Contract Type: Full-time" in out;
+        assert "Amazon" not in out;
+    }
+
+    # Individual company filter
+    buf_comp: io.StringIO = io.StringIO();
+    with patch("urllib.request.urlopen", return_value=mock_cm), patch("sys.stdout", buf_comp) {
+        code = main(["fetch", "software", "-c", "Amazon", "--api-key", "test-api-key"]);
+        assert code == 0;
+        out = buf_comp.getvalue();
+        assert "Found 1 jobs for 'software' (filters: company: 'Amazon'):" in out;
+        assert "Amazon" in out;
+        assert "Google" not in out;
+        assert "Contract Type:" not in out;
     }
 }
 
