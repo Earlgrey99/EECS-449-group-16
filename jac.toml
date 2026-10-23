@@ -28,32 +28,28 @@ base_route_app = "app"
 [jac-shadcn]
 style = "vega"
 baseColor = "neutral"
-theme = "indigo"
+theme = "emerald"
 font = "figtree"
-radius = "default"
+radius = "large"
 menuAccent = "bold"
 menuColor = "default"
 [dependencies.npm]
+radix-ui = "*"
+tailwind-merge = "^3.5.0"
+clsx = "^2.1.1"
 tw-animate-css = "latest"
 shadcn = "latest"
 "@fontsource-variable/figtree" = "latest"
 "@hugeicons/react" = "latest"
 "@hugeicons/core-free-icons" = "latest"
 "class-variance-authority" = "latest"
-"clsx" = "latest"
-"tailwind-merge" = "latest"
 "lucide-react" = "latest"
 "sonner" = "latest"
-"radix-ui" = "latest"
 
 [dependencies.npm.dev]
 tailwindcss = "latest"
 "@tailwindcss/vite" = "latest"
 
 [plugins.client.vite]
-plugins = ["tailwindcss()"]
-lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
-
-[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]

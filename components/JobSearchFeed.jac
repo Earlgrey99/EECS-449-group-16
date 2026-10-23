@@ -1,14 +1,36 @@
-import from "@jac/runtime" { Link, jacIsLoggedIn, Navigate, jacLogout }
+import from "@jac/runtime" { jacIsLoggedIn, Navigate, jacLogout }
 import from "@hugeicons/react" { HugeiconsIcon }
-import from "@hugeicons/core-free-icons" { Search01Icon, KanbanIcon, Logout01Icon }
+import from "@hugeicons/core-free-icons" { Search01Icon, Bookmark01Icon, Logout01Icon }
 import from .ui.button { Button }
 import from .ui.input { Input }
 import from .ui.badge { Badge }
-import from .ui.card { Card, CardHeader, CardTitle, CardContent }
+import from .ui.card { Card, CardContent }
 import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent }
 import from .ui.spinner { Spinner }
-import from .BrandMark { BrandMark }
+import from .TopNav { TopNav }
+import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs }
+
+def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str, active: bool, saved: bool, onSelect: Callable[[], None], onSave: Callable[[], None]) -> JsxElement {
+    return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
+        <CardContent className="flex flex-col gap-1.5 pt-5">
+            <div className="flex items-start justify-between gap-2">
+                <h3 className="font-semibold leading-tight">{title}</h3>
+                <button onClick={onSave} className="shrink-0 rounded p-1 transition-colors hover:bg-muted" aria-label="Save job">
+                    <HugeiconsIcon icon={Bookmark01Icon} strokeWidth={2} className={"size-4 " + ("fill-current text-primary" if saved else "text-muted-foreground")} />
+                </button>
+            </div>
+            <p className="text-sm text-muted-foreground">{company}</p>
+            <p className="text-sm text-muted-foreground">{location}</p>
+            <p className="text-sm font-medium tabular-nums">{"$" + salary}</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+                {for tag in tags.split(", ")[:2] {
+                    <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
+                }}
+            </div>
+        </CardContent>
+    </Card>;
+}
 
 def:pub JobSearchFeed() -> JsxElement {
     if not jacIsLoggedIn() {
@@ -17,93 +39,136 @@ def:pub JobSearchFeed() -> JsxElement {
     has jobs: list[dict[str, str | int]] = [];
     has loading: bool = True;
     has query: str = "";
+    has loc_query: str = "";
+    has selected_id: int = 0;
+    has saved_ids: list[int] = [];
 
     async can with entry {
         jobs = await list_jobs();
         loading = False;
     }
 
-    filtered = [j for j in jobs if query.strip().lower() in (str(j["title"]) + " " + str(j["company"]) + " " + str(j["location"]) + " " + str(j["tags"])).lower()];
+    def matches(j: dict[str, str | int]) -> bool {
+        hay = (str(j["title"]) + " " + str(j["company"]) + " " + str(j["tags"])).lower();
+        return query.strip().lower() in hay and loc_query.strip().lower() in str(j["location"]).lower();
+    }
+
+    filtered = [j for j in jobs if matches(j)];
+    sel: dict[str, str | int] | None = None;
+    for j in filtered {
+        if int(j["id"]) == selected_id {
+            sel = j;
+        }
+    }
+    if sel is None and len(filtered) > 0 {
+        sel = filtered[0];
+    }
+
+    def is_saved(j: dict[str, str | int]) -> bool {
+        for sid in saved_ids {
+            if sid == int(j["id"]) {
+                return True;
+            }
+        }
+        return False;
+    }
+
+    def toggle_save(j: dict[str, str | int]) {
+        jid = int(j["id"]);
+        if is_saved(j) {
+            saved_ids = [sid for sid in saved_ids if sid != jid];
+        } else {
+            saved_ids = saved_ids + [jid];
+        }
+    }
+
+    def toggle_selected_save() {
+        if sel is not None {
+            toggle_save(sel);
+        }
+    }
 
     def handle_query(e: ChangeEvent) { query = e.target.value; }
+    def handle_loc(e: ChangeEvent) { loc_query = e.target.value; }
 
-    return <div className="min-h-svh bg-muted/40">
-        <nav className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
-            <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 pl-6 pr-6">
-                <Link to="/"><BrandMark name="Jaccit" /></Link>
-                <div className="hidden flex-1 items-center gap-6 text-sm text-muted-foreground md:flex">
-                    <span className="font-medium text-foreground">Job search</span>
+    return <div className="flex min-h-svh flex-col bg-primary/5">
+        <TopNav />
+        <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 pt-8 pb-16 pl-6 pr-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {loading and <div className="flex items-center justify-center p-16"><Spinner /></div>}
+            {not loading and <div className="flex flex-col gap-6">
+                <div className="mx-auto flex w-full max-w-2xl flex-col items-stretch gap-2 rounded-2xl border border-primary/40 bg-card p-3 shadow-sm sm:flex-row sm:items-center">
+                    <div className="relative flex-1">
+                        <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input value={query} onChange={handle_query} placeholder="Find jobs" className="border-0 bg-transparent pl-9 shadow-none focus-visible:ring-0" />
+                    </div>
+                    <div className="hidden h-8 w-px bg-border sm:block" />
+                    <div className="flex flex-1 items-center gap-2">
+                        <Input value={loc_query} onChange={handle_loc} placeholder="Current Location" className="border-0 bg-transparent shadow-none focus-visible:ring-0" />
+                        <Button className="shrink-0 rounded-full shadow-sm">Search</Button>
+                    </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={lambda { jacLogout(); }}>
-                    <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
-                </Button>
-            </div>
-        </nav>
 
-        <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 pt-8 pb-16 pl-6 pr-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-2xl font-semibold tracking-tight">Job search</h1>
-                    <p className="text-sm text-muted-foreground">Open roles from companies hiring now.</p>
-                </div>
-            </div>
+                {len(filtered) == 0 and <Empty className="border border-dashed bg-card pt-12 pb-12">
+                    <EmptyHeader>
+                        <EmptyMedia variant="icon"><HugeiconsIcon icon={Search01Icon} strokeWidth={2} /></EmptyMedia>
+                        <EmptyTitle>No matching jobs</EmptyTitle>
+                        <EmptyDescription>Try a different role, company, or location.</EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent><Button variant="outline" onClick={lambda { query = ""; loc_query = ""; }}>Clear search</Button></EmptyContent>
+                </Empty>}
 
-            {if loading {
-                <div className="flex items-center justify-center p-12"><Spinner /></div>
-            } else {
-                <Card className="shadow-sm">
-                    <CardContent className="flex flex-col gap-4 pt-6">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="relative w-full max-w-xs">
-                                <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input value={query} onChange={handle_query} placeholder="Search roles, companies, skills" className="pl-8" />
-                            </div>
-                            <span className="text-sm text-muted-foreground tabular-nums">{str(len(filtered)) + (" jobs" if len(filtered) == 1 else " jobs")}</span>
-                        </div>
-
-                        {if len(filtered) == 0 {
-                            <Empty className="border border-dashed pt-12 pb-12">
-                                <EmptyHeader>
-                                    <EmptyMedia variant="icon"><HugeiconsIcon icon={KanbanIcon} strokeWidth={2} /></EmptyMedia>
-                                    <EmptyTitle>No matching jobs</EmptyTitle>
-                                    <EmptyDescription>Try a different role, company, or skill.</EmptyDescription>
-                                </EmptyHeader>
-                                <EmptyContent><Button variant="outline" onClick={lambda { query = ""; }}>Clear search</Button></EmptyContent>
-                            </Empty>
-                            skip;
+                {len(filtered) > 0 and <div className="grid gap-6 lg:grid-cols-5">
+                    <section className="flex flex-col gap-3 lg:col-span-2">
+                        <h2 className="text-lg font-semibold tracking-tight">Based on your preferences</h2>
+                        {for j in filtered {
+                            <JobCard
+                                key={str(j["id"])}
+                                title={str(j["title"])}
+                                company={str(j["company"])}
+                                location={str(j["location"])}
+                                salary={str(j["salary"])}
+                                tags={str(j["tags"])}
+                                active={sel is not None and int(sel["id"]) == int(j["id"])}
+                                saved={is_saved(j)}
+                                onSelect={lambda { selected_id = int(j["id"]); }}
+                                onSave={lambda { toggle_save(j); }}
+                            />
                         }}
-
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {for j in filtered {
-                                <Card key={str(j["id"])} className="shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-                                    <CardHeader>
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                                <HugeiconsIcon icon={KanbanIcon} strokeWidth={2} className="size-4" />
-                                            </div>
-                                            <Badge variant="outline">{str(j["type"])}</Badge>
-                                        </div>
-                                        <CardTitle className="text-base">{str(j["title"])}</CardTitle>
-                                        <p className="text-sm text-muted-foreground">{str(j["company"])}</p>
-                                    </CardHeader>
-                                    <CardContent className="flex flex-col gap-3">
-                                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                            <span>{str(j["location"])}</span>
-                                            <span aria-hidden="true">·</span>
-                                            <span className="tabular-nums">{"$" + str(j["salary"])}</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {for tag in str(j["tags"]).split(", ") {
-                                                <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
-                                            }}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            }}
-                        </div>
-                    </CardContent>
-                </Card>
-            }}
+                    </section>
+                    <section className="lg:col-span-3">
+                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24">
+                            <CardContent className="flex flex-col gap-4 pt-8 pb-8">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="flex flex-col gap-1">
+                                        <h2 className="text-2xl font-semibold tracking-tight">{str(sel["title"])}</h2>
+                                        <p className="text-muted-foreground">{str(sel["company"])}</p>
+                                    </div>
+                                    <Badge variant="outline">{str(sel["type"])}</Badge>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                                    <span>{str(sel["location"])}</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="tabular-nums font-medium text-foreground">{"$" + str(sel["salary"])}</span>
+                                </div>
+                                <p className="text-sm leading-relaxed text-foreground/90">{str(sel["desc"])}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {for tag in str(sel["tags"]).split(", ") {
+                                        <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
+                                    }}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
+                                    <Button className="shadow-sm">Apply now</Button>
+                                    <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
+                                    <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
+                                        <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>}
+                    </section>
+                </div>}
+            </div>}
         </main>
+        <SiteFooter />
     </div>;
 }
