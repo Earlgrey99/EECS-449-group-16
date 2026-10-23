@@ -14,22 +14,28 @@ def:pub LandingPage() -> JsxElement {
         jobs = await list_jobs();
     }
 
-    preview: list[dict[str, str | int]] = jobs[:5] if len(jobs) > 5 else jobs;
-
     return <div className="flex min-h-svh flex-col bg-primary/5">
         <TopNav />
         <main className="flex flex-1 flex-col gap-14 pt-14 pb-20">
             <section className="mx-auto grid w-full max-w-6xl gap-10 pl-6 pr-6">
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                    {for j in preview {
-                        <Card key={str(j["id"])} className="shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-                            <CardContent className="flex flex-col gap-2 pt-5">
-                                <h3 className="font-semibold leading-tight">{str(j["title"])}</h3>
-                                <p className="text-sm text-muted-foreground">{str(j["location"])}</p>
-                                <p className="text-sm font-medium tabular-nums text-primary">{"$" + str(j["salary"])}</p>
-                            </CardContent>
-                        </Card>
-                    }}
+                <div className="marquee">
+                    <div className="marquee-track">
+                        {for copy in [1, 2] {
+                            <div key={str(copy)} className="marquee-group" aria-hidden={copy == 2}>
+                                {for j in jobs {
+                                    <div key={str(copy) + "-" + str(j["id"])} className="w-64 shrink-0 pr-4">
+                                        <Card className="shadow-sm transition-shadow hover:shadow-md">
+                                            <CardContent className="flex flex-col gap-2 pt-5">
+                                                <h3 className="font-semibold leading-tight">{str(j["title"])}</h3>
+                                                <p className="text-sm text-muted-foreground">{str(j["location"])}</p>
+                                                <p className="text-sm font-medium tabular-nums text-primary">{"$" + str(j["salary"])}</p>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                }}
+                            </div>
+                        }}
+                    </div>
                 </div>
                 <div className="flex flex-col items-center gap-8 text-center">
                     <h1 className="text-balance text-4xl font-semibold tracking-tight md:text-5xl">{"Launch your career. Today. For free."}</h1>
