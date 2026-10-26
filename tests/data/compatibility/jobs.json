@@ -1,0 +1,54 @@
+[
+  {
+    "id": 1,
+    "title": "Frontend Engineer",
+    "company": "Lumen Labs",
+    "location": "Cleveland, OH",
+    "type": "Full-time",
+    "tags": "React, TypeScript, CSS",
+    "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team."
+  },
+  {
+    "id": 2,
+    "title": "Backend Engineer",
+    "company": "Northwind Data",
+    "location": "Remote",
+    "type": "Full-time",
+    "tags": "Python, SQL, APIs",
+    "desc": "Design and scale the data services behind our real-time reporting pipelines."
+  },
+  {
+    "id": 5,
+    "title": "DevOps Engineer",
+    "company": "Halcyon Cloud",
+    "location": "Remote",
+    "type": "Full-time",
+    "tags": "Kubernetes, Terraform, AWS",
+    "desc": "Own the deployment platform that keeps our customer workloads healthy."
+  },
+  {
+    "id": 6,
+    "title": "Product Designer",
+    "company": "Marigold Studio",
+    "location": "Cleveland, OH",
+    "type": "Contract",
+    "tags": "Figma, Prototyping, UX",
+    "desc": "Shape product experiences for consumer apps from first sketch to shipped UI."
+  },
+  {
+    "title": "Python Developer",
+    "company": "Jooble Example Co",
+    "location": "Detroit, MI",
+    "type": "Full-time",
+    "salary": "$95,000",
+    "snippet": "We are hiring a Python developer to build REST APIs with Flask and PostgreSQL. Experience with Docker and AWS is a plus.",
+    "link": "https://jooble.org/desc/example"
+  },
+  {
+    "title": "Barista",
+    "company": "Corner Cafe",
+    "location": "Ann Arbor, MI",
+    "type": "Part-time",
+    "desc": "Prepare espresso drinks, greet customers and keep the cafe clean."
+  }
+]
