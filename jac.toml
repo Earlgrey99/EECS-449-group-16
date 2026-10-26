@@ -2,9 +2,12 @@
 name = "EECS-449-group-16"
 version = "0.1.0"
 description = "Command-line Jac project"
-entry-point = "main"
-kind = "fullstack"
+entry-point = "main.jac"
+kind = "web-app"
 jac-version = "==0.37.11"
+
+[placement.pins]
+"services.*" = "server"
 
 [dependencies]
 libsql = "~=0.1"
@@ -33,6 +36,7 @@ font = "figtree"
 radius = "large"
 menuAccent = "bold"
 menuColor = "default"
+
 [dependencies.npm]
 radix-ui = "*"
 tailwind-merge = "^3.5.0"
