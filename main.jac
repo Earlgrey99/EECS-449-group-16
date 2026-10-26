@@ -404,21 +404,24 @@ def main(argv: list[str] | None = None) -> int {
     args = build_parser().parse_args(argv);
     if args.command == "profile" {
         try {
-            return applicant_cli.profile_command(args);
+            applicant_cli.profile_command(args);
+            return 0;
         } except Exception as e {
             print(f"Profile error: {e}", file=sys.stderr);
             return 1;
         }
     } elif args.command == "autofill" {
         try {
-            return applicant_cli.autofill_command(args);
+            applicant_cli.autofill_command(args);
+            return 0;
         } except Exception as e {
             print(f"Autofill error: {e}", file=sys.stderr);
             return 1;
         }
     } elif args.command == "tailor-resume" {
         try {
-            return applicant_cli.tailor_command(args);
+            applicant_cli.tailor_command(args);
+            return 0;
         } except Exception as e {
             print(f"Tailoring error: {e}", file=sys.stderr);
             return 1;
