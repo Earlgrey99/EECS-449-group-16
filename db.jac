@@ -5,7 +5,6 @@ import hmac;
 import os;
 import secrets;
 import sqlite3;
-import libsql;
 
 def load_env_file(filepath: str = ".env") -> None {
     if not os.path.exists(filepath) {
@@ -48,7 +47,7 @@ def get_db_connection(
         conn.execute("PRAGMA foreign_keys = ON;");
         return conn;
     }
-
+    import libsql;
     conn = libsql.connect(database=url, auth_token=token);
     return conn;
 }
