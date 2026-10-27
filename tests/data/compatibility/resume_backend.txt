@@ -1,0 +1,17 @@
+Jordan Lee
+Ann Arbor, MI | jordan.lee@example.com
+
+SUMMARY
+Backend engineer with 3 years of experience building data services and REST APIs.
+
+SKILLS
+Python, SQL, PostgreSQL, Docker, AWS, Git, Linux, Flask
+
+EXPERIENCE
+Software Engineer, Acme Analytics (2022 - present)
+- Built Python data pipelines that power real-time reporting dashboards.
+- Designed REST APIs in Flask backed by PostgreSQL.
+- Deployed services to AWS with Docker and GitHub Actions CI/CD.
+
+EDUCATION
+B.S.E. Computer Science, University of Michigan

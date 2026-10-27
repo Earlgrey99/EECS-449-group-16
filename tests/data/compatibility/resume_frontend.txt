@@ -1,0 +1,14 @@
+Sam Rivera
+Cleveland, OH | sam.rivera@example.com
+
+SUMMARY
+Frontend engineer focused on fast, accessible interfaces.
+
+SKILLS
+JavaScript, TypeScript, React, HTML, CSS, Figma, Git
+
+EXPERIENCE
+Frontend Developer, Brightside Media (2021 - present)
+- Built accessible React components in TypeScript for an analytics product.
+- Improved page load speed by 40% through CSS and bundle optimizations.
+- Worked with designers in Figma to ship new interface features.

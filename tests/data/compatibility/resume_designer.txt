@@ -1,0 +1,13 @@
+Avery Kim
+Chicago, IL | avery.kim@example.com
+
+SUMMARY
+Product designer who takes consumer apps from first sketch to shipped UI.
+
+SKILLS
+Figma, Prototyping, UX research, user interviews, design systems
+
+EXPERIENCE
+Product Designer, Petal Apps (2020 - present)
+- Led UX for a consumer budgeting app used by 200k people.
+- Built interactive prototypes in Figma to test new product experiences.
