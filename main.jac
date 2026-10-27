@@ -50,6 +50,25 @@ import from db {
     update_application,
     delete_application
 }
+import from services.jobs {
+    _extract_salary_values,
+    _matches_contract_type,
+    _matches_company,
+    build_jooble_url,
+    build_usajobs_url,
+    build_himalayas_url,
+    build_themuse_url,
+    normalize_jooble_job,
+    normalize_usajobs_job,
+    normalize_himalayas_job,
+    normalize_themuse_job,
+    fetch_jooble,
+    fetch_usajobs,
+    fetch_himalayas,
+    fetch_themuse,
+    fetch,
+    list_jobs
+}
 
 glob APPLICATION_COLUMNS: list[str] = [
     "Company name",
@@ -158,125 +177,6 @@ def table_Sheet(
     return application_table;
 }
 
-def _extract_salary_values(salary_val: any) -> list[float] {
-    if salary_val is None {
-        return [];
-    }
-    if isinstance(salary_val, (int, float)) {
-        return [float(salary_val)];
-    }
-    text = str(salary_val).strip();
-    if not text {
-        return [];
-    }
-    cleaned = text.replace(",", "");
-    matches = re.findall(r"(\d+(?:\.\d+)?)\s*([kK])?", cleaned);
-    values: list[float] = [];
-    for (num_str, k_suffix) in matches {
-        try {
-            val = float(num_str);
-            if k_suffix.lower() == "k" {
-                val = val * 1000.0;
-            }
-            values.append(val);
-        } except ValueError {
-            continue;
-        }
-    }
-    return values;
-}
-
-def _matches_contract_type(job_type: any, target_type: str) -> bool {
-    if not job_type or not target_type {
-        return False;
-    }
-    jt = str(job_type).strip().lower();
-    tt = str(target_type).strip().lower();
-    if tt == jt or tt in jt {
-        return True;
-    }
-    jt_norm = jt.replace("-", " ");
-    tt_norm = tt.replace("-", " ");
-    if tt_norm == jt_norm or tt_norm in jt_norm {
-        return True;
-    }
-    return False;
-}
-
-def _matches_company(job_company: any, target_company: str) -> bool {
-    if not job_company or not target_company {
-        return False;
-    }
-    jc = str(job_company).strip().lower();
-    tc = str(target_company).strip().lower();
-    return tc in jc;
-}
-
-def fetch(
-    n: int,
-    search: str,
-    location: str | None = None,
-    salary: int | None = None,
-    contract_type: str | None = None,
-    company: str | None = None,
-    api_key: str | None = None
-) -> list[dict[str, any]] {
-    if n <= 0 {
-        return [];
-    }
-    load_env_file();
-    key = api_key or os.environ.get("JOOBLE_API_KEY", "");
-    if not key {
-        raise ValueError("Jooble API key must be provided via JOOBLE_API_KEY env var, .env file, or --api-key argument.");
-    }
-    url = f"https://jooble.org/api/{key}";
-    req_payload = {"keywords": search, "ResultOnPage": n};
-    if location {
-        req_payload["location"] = location;
-    }
-    if salary is not None {
-        req_payload["salary"] = int(salary);
-    }
-    body = json.dumps(req_payload).encode("utf-8");
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
-    );
-    try {
-        with urllib.request.urlopen(req) as resp {
-            resp_payload = json.loads(resp.read().decode("utf-8"));
-        }
-    } except urllib.error.HTTPError as e {
-        raise RuntimeError(f"Jooble API HTTP error: {e.code} {e.reason}");
-    } except urllib.error.URLError as e {
-        raise RuntimeError(f"Jooble API network error: {e.reason}");
-    }
-
-    raw_jobs = resp_payload.get("jobs", []) if isinstance(resp_payload, dict) else [];
-    filtered_jobs = [];
-    for job in raw_jobs {
-        if company is not None and str(company).strip() != "" {
-            if not _matches_company(job.get("company"), str(company).strip()) {
-                continue;
-            }
-        }
-        if contract_type is not None and str(contract_type).strip() != "" {
-            if not _matches_contract_type(job.get("type"), str(contract_type).strip()) {
-                continue;
-            }
-        }
-        if salary is not None {
-            sal_vals = _extract_salary_values(job.get("salary"));
-            if not sal_vals or max(sal_vals) < int(salary) {
-                continue;
-            }
-        }
-        filtered_jobs.append(job);
-    }
-    return filtered_jobs[:n];
-}
-
 def parse_fetch_args(
     args: argparse.Namespace,
     location: str | None = None,
@@ -343,7 +243,10 @@ def build_parser -> argparse.ArgumentParser {
     fetch_cmd.add_argument("-S", "--salary", "--min-salary", dest="salary", type=int, `default=None, help="Minimum desired salary threshold");
     fetch_cmd.add_argument("-t", "--contract-type", "--type", dest="contract_type", type=str, `default=None, help="Contract or employment type (e.g. full-time, part-time, contract, internship)");
     fetch_cmd.add_argument("-c", "--company", dest="company", type=str, `default=None, help="Target company name");
-    fetch_cmd.add_argument("--api-key", type=str, `default=None, help="Jooble API key");
+    fetch_cmd.add_argument("--api-key", type=str, `default=None, help="API key");
+    fetch_cmd.add_argument("--domain", type=str, `default=None, help="API endpoint domain (e.g. uk.jooble.org, data.usajobs.gov)");
+    fetch_cmd.add_argument("--endpoint", type=str, `default=None, help="Custom API endpoint URL");
+    fetch_cmd.add_argument("--source", "--provider", dest="source", type=str, `default="jooble", help="Job API provider source: jooble, usajobs, himalayas, themuse, or all (default: jooble)");
     fetch_cmd.add_argument("--json", action="store_true", help="Output results as JSON");
 
     table_cmd = commands.add_parser("table-sheet", help="Track and export a job application");
@@ -418,7 +321,10 @@ def main(argv: list[str] | None = None) -> int {
                 salary=salary,
                 contract_type=contract_type,
                 company=company,
-                api_key=args.api_key
+                api_key=args.api_key,
+                source=args?.source or "jooble",
+                domain=args?.domain,
+                endpoint=args?.endpoint
             );
             if args.json {
                 print(json.dumps(jobs, indent=2));
@@ -457,6 +363,10 @@ def main(argv: list[str] | None = None) -> int {
                     }
                     if link {
                         print(f"   Link: {link}");
+                    }
+                    source_str = job.get("source", "");
+                    if source_str and (args?.source == "all" or (args?.source is not None and "," in str(args.source))) {
+                        print(f"   Source: {source_str}");
                     }
                     print();
                 }
@@ -1630,7 +1540,6 @@ with entry:__main__ {
 
 # --- Web UI (Jaccit job application platform) ---
 
-import from services.jobs { list_jobs }
 import ".styles.global.css";
 import ".components.LandingPage.css";
 
