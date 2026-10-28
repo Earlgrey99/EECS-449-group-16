@@ -15,7 +15,7 @@ def:pub TopNav() -> JsxElement {
             <div className="hidden flex-1 items-center justify-end gap-2 md:flex">
                 <Link to="/"><span className={link_class("/")}>Home</span></Link>
                 <Link to="/jobs"><span className={link_class("/jobs")}>Jobs</span></Link>
-                <Link to="/jobs"><span className={link_class("/explore")}>Explore</span></Link>
+                <Link to="/tools"><span className={link_class("/tools")}>Applicant tools</span></Link>
             </div>
             <button className="flex size-9 items-center justify-center rounded-md text-foreground md:hidden" aria-label="Menu">
                 <HugeiconsIcon icon={Menu01Icon} strokeWidth={2} className="size-5" />

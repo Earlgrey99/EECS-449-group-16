@@ -10,6 +10,10 @@ jac-version = "==0.37.11"
 "services.*" = "server"
 
 [dependencies]
+playwright = ">=1.50,<2.0"
+pypdf = ">=5.0,<7.0"
+python-docx = ">=1.0,<2.0"
+reportlab = ">=4.0,<5.0"
 libsql = "~=0.1"
 
 [dev-dependencies]

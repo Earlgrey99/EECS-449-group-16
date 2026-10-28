@@ -1,4 +1,4 @@
-import from "@jac/runtime" { jacIsLoggedIn, Navigate, jacLogout }
+import from "@jac/runtime" { jacIsLoggedIn, Navigate, jacLogout, useNavigate }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { Search01Icon, Bookmark01Icon, Logout01Icon }
 import from .ui.button { Button }
@@ -33,6 +33,7 @@ def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str,
 }
 
 def:pub JobSearchFeed() -> JsxElement {
+    nav = useNavigate();
     if not jacIsLoggedIn() {
         return <Navigate to="/login" replace={True} />;
     }
@@ -157,7 +158,7 @@ def:pub JobSearchFeed() -> JsxElement {
                                     }}
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm">Apply now</Button>
+                                    <Button className="shadow-sm" onClick={lambda { nav("/tools"); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
                                     <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
                                         <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
