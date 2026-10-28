@@ -10,8 +10,9 @@ import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs }
+import from ..services.compatibility { score_jobs }
 
-def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str, active: bool, saved: bool, onSelect: Callable[[], None], onSave: Callable[[], None]) -> JsxElement {
+def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str, match_score: int, active: bool, saved: bool, onSelect: Callable[[], None], onSave: Callable[[], None]) -> JsxElement {
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
         <CardContent className="flex flex-col gap-1.5 pt-5">
             <div className="flex items-start justify-between gap-2">
@@ -23,6 +24,7 @@ def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str,
             <p className="text-sm text-muted-foreground">{company}</p>
             <p className="text-sm text-muted-foreground">{location}</p>
             <p className="text-sm font-medium tabular-nums">{"$" + salary}</p>
+            {match_score >= 0 and <Badge variant={("default" if match_score >= 75 else ("secondary" if match_score >= 50 else "outline"))} className="w-fit tabular-nums">{str(match_score) + "% match"}</Badge>}
             <div className="mt-1 flex flex-wrap gap-1.5">
                 {for tag in tags.split(", ")[:2] {
                     <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
@@ -42,6 +44,10 @@ def:pub JobSearchFeed() -> JsxElement {
     has loc_query: str = "";
     has selected_id: int = 0;
     has saved_ids: list[int] = [];
+    has resume_text: str = "";
+    has match_rows: list[dict[str, str | int]] = [];
+    has scoring: bool = False;
+    has score_message: str = "";
 
     async can with entry {
         jobs = await list_jobs();
@@ -90,6 +96,44 @@ def:pub JobSearchFeed() -> JsxElement {
 
     def handle_query(e: ChangeEvent) { query = e.target.value; }
     def handle_loc(e: ChangeEvent) { loc_query = e.target.value; }
+    def handle_resume(e: ChangeEvent) { resume_text = e.target.value; }
+
+    # Ask the server to score every job against the pasted resume.
+    async def check_matches() {
+        if not resume_text.strip() {
+            score_message = "Paste your resume first.";
+            return;
+        }
+        scoring = True;
+        score_message = "";
+        try {
+            match_rows = await score_jobs(resume_text, jobs);
+        } except Exception {
+            score_message = "Could not score the jobs. Please try again.";
+        }
+        scoring = False;
+    }
+
+    # Find the score row for one job (None if not scored yet).
+    def match_for(j: dict[str, str | int]) -> dict[str, str | int] | None {
+        for m in match_rows {
+            if int(m["id"]) == int(j["id"]) {
+                return m;
+            }
+        }
+        return None;
+    }
+
+    # The number to show on a job card, or -1 to show nothing.
+    def card_score(j: dict[str, str | int]) -> int {
+        m = match_for(j);
+        if m is None {
+            return -1;
+        }
+        return int(m["score"]);
+    }
+
+    sel_match = match_for(sel) if sel is not None else None;
 
     return <div className="flex min-h-svh flex-col bg-primary/5">
         <TopNav />
@@ -107,6 +151,24 @@ def:pub JobSearchFeed() -> JsxElement {
                         <Button className="shrink-0 rounded-full shadow-sm">Search</Button>
                     </div>
                 </div>
+
+                <Card className="mx-auto w-full max-w-2xl shadow-sm">
+                    <CardContent className="flex flex-col gap-3 pt-5">
+                        <h2 className="text-lg font-semibold tracking-tight">Check your match</h2>
+                        <p className="text-sm text-muted-foreground">Paste your resume to see how well you fit each job.</p>
+                        <textarea
+                            value={resume_text}
+                            onChange={handle_resume}
+                            rows={6}
+                            placeholder="Paste your resume text here"
+                            className="w-full rounded-lg border border-input bg-transparent p-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                        />
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Button onClick={lambda { check_matches(); }} disabled={scoring} className="shadow-sm">{"Scoring..." if scoring else "Check my match"}</Button>
+                            {score_message and <p className="text-sm text-destructive">{score_message}</p>}
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {len(filtered) == 0 and <Empty className="border border-dashed bg-card pt-12 pb-12">
                     <EmptyHeader>
@@ -128,6 +190,7 @@ def:pub JobSearchFeed() -> JsxElement {
                                 location={str(j["location"])}
                                 salary={str(j["salary"])}
                                 tags={str(j["tags"])}
+                                match_score={card_score(j)}
                                 active={sel is not None and int(sel["id"]) == int(j["id"])}
                                 saved={is_saved(j)}
                                 onSelect={lambda { selected_id = int(j["id"]); }}
@@ -150,6 +213,11 @@ def:pub JobSearchFeed() -> JsxElement {
                                     <span aria-hidden="true">·</span>
                                     <span className="tabular-nums font-medium text-foreground">{"$" + str(sel["salary"])}</span>
                                 </div>
+                                {sel_match is not None and <div className="flex flex-col gap-1 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                                    <p className="font-medium">{"Your match: " + str(sel_match["score"]) + "% (" + str(sel_match["label"]) + ")"}</p>
+                                    <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match["matched"]) or "none")}</p>
+                                    <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match["missing"]) or "none")}</p>
+                                </div>}
                                 <p className="text-sm leading-relaxed text-foreground/90">{str(sel["desc"])}</p>
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"]).split(", ") {

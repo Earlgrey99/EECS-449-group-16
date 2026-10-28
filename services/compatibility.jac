@@ -276,3 +276,31 @@ def format_compatibility(result: dict[str, any], job: dict[str, any]) -> str {
     ];
     return "\n".join(lines);
 }
+
+"""Web app endpoint: score every job for the resume the user pasted.
+
+`def:pub` makes this callable from the browser, the same way the job feed
+calls `list_jobs()`. It returns one small dict per job, using the same
+"comma-separated text" style as job tags so the page can show it easily:
+    {"id": 2, "score": 95, "label": "Strong match",
+     "matched": "python, sql, apis", "missing": ""}
+"""
+def:pub score_jobs(resume_text: str, jobs: list[dict[str, str | int]]) -> list[dict[str, str | int]] {
+    if not resume_text.strip() {
+        return [];
+    }
+    results: list[dict[str, str | int]] = [];
+    for job in jobs {
+        result = compute_compatibility(resume_text, job);
+        matched = [str(s) for s in result["matched_skills"]];
+        missing = [str(s) for s in result["missing_skills"]];
+        results.append({
+            "id": int(job["id"]),
+            "score": int(result["score"]),
+            "label": str(result["label"]),
+            "matched": ", ".join(matched),
+            "missing": ", ".join(missing),
+        });
+    }
+    return results;
+}

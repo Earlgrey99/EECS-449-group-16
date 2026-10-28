@@ -14,8 +14,10 @@ import from services.compatibility {
     compute_compatibility,
     rank_jobs,
     score_label,
-    format_compatibility
+    format_compatibility,
+    score_jobs
 }
+import from services.jobs { list_jobs }
 
 # Folder that holds the sample resumes and jobs used by these tests.
 glob DATA_DIR: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "compatibility");
@@ -201,4 +203,24 @@ test "format_compatibility shows score and skills" {
     assert "DevOps Engineer - Halcyon Cloud" in text;
     assert "%" in text;
     assert "Missing skills: kubernetes, terraform" in text;
+}
+
+# ---------- score_jobs (used by the web app) ----------
+# These use list_jobs(), the same 8 jobs the job feed page shows.
+
+test "score_jobs returns one row per job with id, score and skills" {
+    jobs = list_jobs();
+    rows = score_jobs(load_resume("backend"), jobs);
+    assert len(rows) == len(jobs);
+    backend = [r for r in rows if r["id"] == 2][0];
+    assert backend["score"] == 95, backend;
+    assert backend["label"] == "Strong match";
+    assert backend["matched"] == "python, sql, apis";
+    assert backend["missing"] == "";
+    devops = [r for r in rows if r["id"] == 5][0];
+    assert devops["missing"] == "kubernetes, terraform";
+}
+
+test "score_jobs with an empty resume returns no rows" {
+    assert score_jobs("   ", list_jobs()) == [];
 }
