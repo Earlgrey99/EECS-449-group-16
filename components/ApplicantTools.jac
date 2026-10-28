@@ -1,10 +1,13 @@
-import from "@jac/runtime" { jacIsLoggedIn, Navigate }
+import from "@jac/runtime" { jacIsLoggedIn, Navigate, useLocation }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
 import from ..services.applicant_demo { review_resume_text }
+import from ..services.jobs { list_jobs }
 
 def:pub ApplicantTools() -> JsxElement {
+    location = useLocation();
+    job_id = location.search.replace("?job=", "").split("&")[0];
     if not jacIsLoggedIn() {
         return <Navigate to="/login" replace={True} />;
     }
@@ -27,6 +30,19 @@ def:pub ApplicantTools() -> JsxElement {
     has review: str = "";
     has reviewing: bool = False;
     has review_error: str = "";
+
+    # Load the job clicked in the existing feed, if provided.
+    async can with entry {
+        if job_id {
+            available_jobs = await list_jobs();
+            for j in available_jobs {
+                if str(j["id"]) == job_id {
+                    role = str(j["title"]);
+                    job_description = str(j["desc"]) + " Relevant technologies: " + str(j["tags"]);
+                }
+            }
+        }
+    }
 
     def fill_demo() {
         if not full_name.strip() or not email.strip() {
