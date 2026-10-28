@@ -158,7 +158,7 @@ def:pub JobSearchFeed() -> JsxElement {
                                     }}
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { nav("/tools"); }}>Apply now (demo)</Button>
+                                    <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
                                     <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
                                         <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
