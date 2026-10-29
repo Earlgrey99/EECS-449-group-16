@@ -16,7 +16,7 @@ libsql = "~=0.1"
 watchdog = ">=3.0.0"
 
 [check]
-suppress = ["W1037", "W3030"]
+suppress = ["W1037", "W3030", "W2003"]
 
 [jacpack]
 name = 'EECS-449-group-16'
@@ -27,6 +27,26 @@ project_id = "prj_bf9c70c000554c7c849fc474521eea84"
 
 [serve]
 base_route_app = "app"
+
+[serve.auth]
+secret = "eecs449-group16-dev-secret-key-32chars"
+algorithm = "HS256"
+token_ttl_days = 7
+
+[scale.sso]
+host = "http://localhost:8000"
+client_auth_callback_url = "http://localhost:8000/login"
+
+[scale.sso.google]
+client_id = "${CLIENT_ID:-968818097390-0k1pcgde5mnghqgm2legs34a5l727gl1.apps.googleusercontent.com}"
+client_secret = "${CLIENT_SECRET:-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}"
+
+[client.vite]
+plugins = [
+  "tailwindcss()",
+  "({ name: 'sso-proxy', config: () => ({ server: { proxy: { '/sso': { target: 'http://localhost:8001', changeOrigin: true } } } }) })"
+]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
 [jac-shadcn]
 style = "vega"
@@ -53,11 +73,3 @@ shadcn = "latest"
 [dependencies.npm.dev]
 tailwindcss = "latest"
 "@tailwindcss/vite" = "latest"
-
-[plugins.client.vite]
-plugins = ["tailwindcss()"]
-lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
-
-[client.vite]
-plugins = ["tailwindcss()"]
-lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
