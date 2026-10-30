@@ -63,6 +63,8 @@ def init_db(conn: any = None) {
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT,
             phone TEXT,
+            auth_provider TEXT DEFAULT 'local',
+            oauth_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -73,10 +75,19 @@ def init_db(conn: any = None) {
     if not has_password_hash {
         db_conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT;");
     }
+    has_auth_provider = any(column[1] == "auth_provider" for column in user_columns);
+    if not has_auth_provider {
+        db_conn.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local';");
+    }
+    has_oauth_id = any(column[1] == "oauth_id" for column in user_columns);
+    if not has_oauth_id {
+        db_conn.execute("ALTER TABLE users ADD COLUMN oauth_id TEXT;");
+    }
+    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_users_oauth ON users(auth_provider, oauth_id);");
 
     # Resumes table
     db_conn.execute("""
-        CREATE TABLE IF NOT EXISTS resumes (
+        CREATE TABLE IF NOT EXISTS resumes (\
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
@@ -172,6 +183,8 @@ def register_user(
         email=normalized_email,
         phone=phone.strip() if phone else None,
         password_hash=pwd_hash,
+        auth_provider="local",
+        oauth_id=None,
         conn=db_conn
     );
     res = dict(user);
@@ -209,13 +222,15 @@ def create_user(
     email: str,
     phone: str | None = None,
     password_hash: str | None = None,
+    auth_provider: str = "local",
+    oauth_id: str | None = None,
     conn: any = None
 ) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute(
-        "INSERT INTO users (name, email, phone, password_hash) VALUES (?, ?, ?, ?)",
-        (name, email, phone, password_hash)
+        "INSERT INTO users (name, email, phone, password_hash, auth_provider, oauth_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, email, phone, password_hash, auth_provider, oauth_id)
     );
     db_conn.commit();
     user_id = cur.lastrowid;
@@ -242,6 +257,87 @@ def get_user_by_email(email: str, conn: any = None) -> dict[str, any] | None {
     return row_to_dict(cur, row);
 }
 
+def get_user_by_oauth_id(
+    oauth_id: str,
+    auth_provider: str = "google",
+    conn: any = None
+) -> dict[str, any] | None {
+    if not oauth_id {
+        return None;
+    }
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "SELECT * FROM users WHERE oauth_id = ? AND auth_provider = ?",
+        (oauth_id, auth_provider)
+    );
+    row = cur.fetchone();
+    return row_to_dict(cur, row);
+}
+
+def sync_oauth_user(
+    email: str,
+    name: str | None = None,
+    oauth_id: str | None = None,
+    auth_provider: str = "google",
+    conn: any = None
+) -> dict[str, any] {
+    if not email or not email.strip() {
+        raise ValueError("Email cannot be empty.");
+    }
+    clean_email = email.strip().lower();
+    clean_name = name.strip() if name and name.strip() else clean_email.split("@")[0];
+    db_conn = conn if conn is not None else get_db_connection();
+
+    existing_user: any = None;
+    if oauth_id {
+        existing_user = get_user_by_oauth_id(oauth_id, auth_provider=auth_provider, conn=db_conn);
+    }
+    if existing_user is None {
+        existing_user = get_user_by_email(clean_email, conn=db_conn);
+    }
+
+    if existing_user is not None {
+        user_id = existing_user["id"];
+        updates = [];
+        params = [];
+        if (not existing_user.get("name") or existing_user.get("name") == clean_email.split("@")[0]) and clean_name {
+            updates.append("name = ?");
+            params.append(clean_name);
+        }
+        if oauth_id and not existing_user.get("oauth_id") {
+            updates.append("oauth_id = ?");
+            params.append(oauth_id);
+        }
+        if auth_provider and (not existing_user.get("auth_provider") or existing_user.get("auth_provider") == "local") {
+            updates.append("auth_provider = ?");
+            params.append(auth_provider);
+        }
+        if updates {
+            params.append(user_id);
+            cur = db_conn.cursor();
+            cur.execute(f"UPDATE users SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", tuple(params));
+            db_conn.commit();
+            existing_user = get_user_by_id(user_id, conn=db_conn);
+        }
+        res = dict(existing_user);
+        res.pop("password_hash", None);
+        return res;
+    }
+
+    user = create_user(
+        name=clean_name,
+        email=clean_email,
+        auth_provider=auth_provider,
+        oauth_id=oauth_id,
+        password_hash=None,
+        conn=db_conn
+    );
+    res = dict(user);
+    res.pop("password_hash", None);
+    return res;
+}
+
 def list_users(conn: any = None) -> list[dict[str, any]] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
@@ -257,6 +353,8 @@ def update_user(
     email: str | None = None,
     phone: str | None = None,
     password_hash: str | None = None,
+    auth_provider: str | None = None,
+    oauth_id: str | None = None,
     conn: any = None
 ) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
@@ -278,6 +376,14 @@ def update_user(
     if password_hash is not None {
         fields.append("password_hash = ?");
         vals.append(password_hash);
+    }
+    if auth_provider is not None {
+        fields.append("auth_provider = ?");
+        vals.append(auth_provider);
+    }
+    if oauth_id is not None {
+        fields.append("oauth_id = ?");
+        vals.append(oauth_id);
     }
     if not fields {
         return get_user_by_id(user_id, conn=db_conn);
