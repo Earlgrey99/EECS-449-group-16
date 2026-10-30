@@ -29,8 +29,13 @@ jobs:
         run: jac --version
       - name: Install project dependencies
         run: jac install
-      - name: Compile Jac
+      - name: Compile Jac entry point
         run: jac check main.jac
+      - name: Compile new applicant pages and backend
+        run: |
+          jac check components/ApplicantTools.jac
+          jac check services/applicant_demo.jac
+          jac check 'pages/(auth)/tools.jac'
       - name: Run Jac tests
         run: jac test -d tests -v
       - name: Run applicant Python tests
