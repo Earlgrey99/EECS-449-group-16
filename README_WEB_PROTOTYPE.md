@@ -12,7 +12,7 @@ git fetch origin
 git switch feature/jaccit-web-autofill-tailoring
 jac install
 jac check main.jac
-jac test main.jac -v
+jac test -d tests -v
 python3 -m unittest discover -s tests -p 'test_applicant*.py' -v
 jac run --dev main.jac
 ```
