@@ -32,6 +32,6 @@ jobs:
       - name: Compile Jac
         run: jac check main.jac
       - name: Run Jac tests
-        run: jac test main.jac -v
+        run: jac test -d tests -v
       - name: Run applicant Python tests
         run: .jac/venv/bin/python -m unittest discover -s tests -p 'test_applicant*.py' -v
