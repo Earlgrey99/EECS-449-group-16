@@ -40,3 +40,24 @@ jobs:
         run: jac test -d tests -v
       - name: Run applicant Python tests
         run: .jac/venv/bin/python -m unittest discover -s tests -p 'test_applicant*.py' -v
+      - name: Smoke test local web routes
+        run: |
+          jac run --dev main.jac > jac-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --max-time 3 --fail --silent http://127.0.0.1:8000/ -o /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat jac-server.log
+            exit 1
+          fi
+          curl --max-time 10 --fail --silent http://127.0.0.1:8000/tools -o /dev/null || {
+            cat jac-server.log
+            exit 1
+          }
