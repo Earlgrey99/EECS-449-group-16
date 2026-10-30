@@ -32,6 +32,7 @@ def:pub TopNav -> JsxElement {
                 <Link to="/"><span className={link_class("/")}>Home</span></Link>
                 <Link to="/jobs"><span className={link_class("/jobs")}>Jobs</span></Link>
                 <Link to="/jobs"><span className={link_class("/explore")}>Explore</span></Link>
+                <Link to="/tools"><span className={link_class("/tools")}>Applicant tools</span></Link>
                 {logged_in and <div className="flex items-center gap-2 pl-3">
                     <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                         <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} className="size-3.5" />

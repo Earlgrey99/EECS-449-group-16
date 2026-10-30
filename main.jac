@@ -22,6 +22,7 @@ import os;
 import re;
 import sys;
 import tempfile;
+import applicant_cli;
 import urllib.error;
 import urllib.request;
 import from unittest.mock { MagicMock, patch }
@@ -277,12 +278,57 @@ def build_parser -> argparse.ArgumentParser {
     login_cmd.add_argument("--url", type=str, `default=None, help="Database URL");
     login_cmd.add_argument("--token", type=str, `default=None, help="Auth token");
 
+    profile_cmd = commands.add_parser("profile", help="Manage local applicant profile");
+    profile_cmd.add_argument("--set", dest="set_fields", nargs=2, action="append", `default=[], help="Set field and value");
+    profile_cmd.add_argument("--show", action="store_true");
+    profile_cmd.add_argument("--file", type=str, `default=None);
+
+    autofill_cmd = commands.add_parser("autofill", help="Preview or fill application fields");
+    autofill_cmd.add_argument("--target", type=str, required=True);
+    autofill_cmd.add_argument("--profile", type=str, `default=None);
+    autofill_cmd.add_argument("--mapping", type=str, `default=None);
+    autofill_cmd.add_argument("--apply", action="store_true");
+    autofill_cmd.add_argument("--headless", action="store_true");
+    autofill_cmd.add_argument("--hold-seconds", type=int, `default=0);
+
+    tailor_cmd = commands.add_parser("tailor-resume", help="Prepare job-specific resume review");
+    tailor_cmd.add_argument("--resume", type=str, `default=None);
+    tailor_cmd.add_argument("--profile", type=str, `default=None);
+    tailor_cmd.add_argument("--job-description", type=str, `default=None);
+    tailor_cmd.add_argument("--job-text", type=str, `default=None);
+    tailor_cmd.add_argument("--role", type=str, `default="Target position");
+    tailor_cmd.add_argument("--output", type=str, `default="tailored-review.md");
+
     return parser;
 }
 
 def main(argv: list[str] | None = None) -> int {
     args = build_parser().parse_args(argv);
-    if args.command == "greet" {
+    if args.command == "profile" {
+        try {
+            applicant_cli.profile_command(args);
+            return 0;
+        } except Exception as e {
+            print(f"Profile error: {e}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "autofill" {
+        try {
+            applicant_cli.autofill_command(args);
+            return 0;
+        } except Exception as e {
+            print(f"Autofill error: {e}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "tailor-resume" {
+        try {
+            applicant_cli.tailor_command(args);
+            return 0;
+        } except Exception as e {
+            print(f"Tailoring error: {e}", file=sys.stderr);
+            return 1;
+        }
+    } elif args.command == "greet" {
         print(greet(args.name, args.shout));
         return 0;
     } elif args.command == "table-sheet" {

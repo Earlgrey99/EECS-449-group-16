@@ -3,3 +3,8 @@ jac.local.toml
 __pycache__/
 .env
 skills/
+
+.eecs449/
+profile.json
+tailored-review.*
+*.pyc

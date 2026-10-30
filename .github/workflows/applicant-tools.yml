@@ -1,0 +1,63 @@
+name: Applicant tools verification
+
+on:
+  push:
+    branches:
+      - feature/jaccit-web-autofill-tailoring
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  jac-and-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libclang-dev
+      - name: Install pinned Jac 0.37.11
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.37.11
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Verify Jac CLI
+        run: jac --version
+      - name: Install project dependencies
+        run: jac install
+      - name: Compile Jac entry point
+        run: jac check main.jac
+      - name: Compile new applicant pages and backend
+        run: |
+          jac check components/ApplicantTools.jac
+          jac check services/applicant_demo.jac
+          jac check 'pages/(auth)/tools.jac'
+      - name: Run Jac tests
+        run: jac test -d tests -v
+      - name: Run applicant Python tests
+        run: .jac/venv/bin/python -m unittest discover -s tests -p 'test_applicant*.py' -v
+      - name: Smoke test local web routes
+        run: |
+          jac run --dev main.jac > jac-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --max-time 3 --fail --silent http://127.0.0.1:8000/ -o /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat jac-server.log
+            exit 1
+          fi
+          curl --max-time 10 --fail --silent http://127.0.0.1:8000/tools -o /dev/null || {
+            cat jac-server.log
+            exit 1
+          }
