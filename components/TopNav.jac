@@ -57,6 +57,8 @@ def:pub TopNav -> JsxElement {
                 <Link to="/"><span className={link_class("/")}>Home</span></Link>
                 <Link to="/jobs"><span className={link_class("/jobs")}>Jobs</span></Link>
                 <Link to="/jobs"><span className={link_class("/explore")}>Explore</span></Link>
+                <Link to="/tracker"><span className={link_class("/tracker")}>Tracker</span></Link>
+                <Link to="/tools"><span className={link_class("/tools")}>Applicant tools</span></Link>
                 {logged_in and <div className="relative flex items-center gap-2 pl-3">
                     <button
                         onClick={lambda { dropdown_open = not dropdown_open; }}

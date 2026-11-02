@@ -32,7 +32,7 @@ def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str,
     </Card>;
 }
 
-def:pub JobSearchFeed -> JsxElement {
+def:pub JobSearchFeed() -> JsxElement {
     nav = useNavigate();
     if not jacIsLoggedIn() {
         return <Navigate to="/login" replace={True} />;
@@ -207,7 +207,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     }}
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm">Apply now</Button>
+                                    <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
                                     <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
                                         <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
