@@ -19,7 +19,20 @@ jac run --dev main.jac
 
 Visit http://localhost:8000, sign in using your test account, and open
 **Applicant tools** in the top navigation or use **Apply now** in the sample
-job feed. The new page route is `/tools`.
+job feed. The page routes are `/tools` and `/tracker`.
+
+## Application tracker
+
+Open **Tracker** in the top navigation to view a Notion-style application table
+or switch to **Insights** for live status totals, a configurable status pie,
+bar, or data-table view, and an application-flow Sankey diagram. Use
+**Manage widgets** to add or remove individual statistics and charts. Add
+applications, update their status, remove rows, and export the current table
+as CSV. The table/export fields follow the
+existing `table_Sheet` function: company, job title, date applied, description,
+pay, resume PDF, and cover letter. Tracker rows are sample, in-memory
+data for this prototype; edits reset when the page reloads and do not sync to
+Turso.
 
 ## Prototype A: autofill
 
