@@ -1,8 +1,78 @@
 """Service for syncing authenticated OAuth user sessions with the application database."""
 
 import base64;
+import datetime;
 import json;
-import from db { sync_oauth_user, get_user_by_oauth_id, get_user_by_email }
+import os;
+import from db { sync_oauth_user, get_user_by_oauth_id, get_user_by_email, ensure_test_user }
+import from jaclang.project.config { get_config }
+import from jaclang.server.identity.config { signing_secret, signing_algorithm }
+import from jaclang.server.serving.authcrypt { jwt_encode }
+
+def is_test_profile -> bool {
+    if os.environ.get("JAC_PROFILE") == "test" or os.environ.get("DEV_AUTO_LOGIN") == "1" {
+        return True;
+    }
+    try {
+        cfg: any = get_config();
+        if cfg {
+            if str(cfg?.active_profile) == "test" {
+                return True;
+            }
+            auth_cfg: any = cfg?.serve?.auth;
+            if isinstance(auth_cfg, dict) and bool(auth_cfg.get("auto_login")) {
+                return True;
+            }
+            if auth_cfg and bool(auth_cfg?.auto_login) {
+                return True;
+            }
+        }
+    } except Exception {
+        # Config lookup fallback
+    }
+    return False;
+}
+
+def:pub get_test_user_session(conn: any = None) -> dict[str, any] {
+    if not is_test_profile() {
+        return {"ok": False, "error": "Auto-login is only available in test profile."};
+    }
+    try {
+        actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
+        user = ensure_test_user(conn=actual_conn);
+        now = datetime.datetime.now(datetime.timezone.utc);
+        payload = {
+            "sub": str(user.get("id", "testuser")),
+            "user_id": str(user.get("id", "testuser")),
+            "exp": int((now + datetime.timedelta(days=7)).timestamp()),
+            "iat": int(now.timestamp()),
+            "preferred_username": user.get("name", "Test User"),
+            "email": user.get("email", "testuser@example.com")
+        };
+        sec = "eecs449-group16-dev-secret-key-32chars";
+        algo = "HS256";
+        try {
+            resolved_sec = signing_secret();
+            if resolved_sec {
+                sec = resolved_sec;
+            }
+            resolved_algo = signing_algorithm();
+            if resolved_algo {
+                algo = resolved_algo;
+            }
+        } except Exception {
+            # Use defaults
+        }
+        token = jwt_encode(payload, sec, algorithm=algo);
+        return {
+            "ok": True,
+            "token": token,
+            "user": user
+        };
+    } except Exception as e {
+        return {"ok": False, "error": str(e)};
+    }
+}
 
 def:pub sync_user_session(
     token: str = "",

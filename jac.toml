@@ -6,6 +6,10 @@ entry-point = "main.jac"
 kind = "web-app"
 jac-version = "==0.37.11"
 
+[byllm.model]
+default_model = "ollama/gemma4:e4b"
+# default_model = "deepseek/deekseek-flash"
+
 [placement.pins]
 "services.*" = "server"
 
@@ -47,6 +51,9 @@ plugins = [
   "({ name: 'sso-proxy', config: () => ({ server: { proxy: { '/sso': { target: 'http://localhost:8001', changeOrigin: true } } } }) })"
 ]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[client.vite.define]
+"__DEV_AUTO_LOGIN__" = "false"
 
 [jac-shadcn]
 style = "vega"

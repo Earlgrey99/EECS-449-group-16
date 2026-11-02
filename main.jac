@@ -48,7 +48,12 @@ import from db {
     get_application_by_id,
     list_applications_by_user,
     update_application,
-    delete_application
+    delete_application,
+    ensure_test_user
+}
+import from services.auth_sync {
+    sync_user_session,
+    get_test_user_session
 }
 import from services.jobs {
     _extract_salary_values,
