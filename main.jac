@@ -53,7 +53,8 @@ import from db {
 }
 import from services.auth_sync {
     sync_user_session,
-    get_test_user_session
+    get_test_user_session,
+    resolve_token_identity
 }
 import from services.jobs {
     _extract_salary_values,
@@ -72,7 +73,15 @@ import from services.jobs {
     fetch_himalayas,
     fetch_themuse,
     fetch,
-    list_jobs
+    list_jobs,
+    get_user_tailored_jobs
+}
+import from services.profile_llm {
+    submit_profile_and_generate_query,
+    get_user_profile_data
+}
+import from services.locations {
+    search_cities
 }
 
 glob APPLICATION_COLUMNS: list[str] = [

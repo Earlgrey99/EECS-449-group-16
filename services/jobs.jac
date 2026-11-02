@@ -1,12 +1,14 @@
 """Job listings served to the search feed and multi-provider API fetcher."""
 
+import base64;
 import json;
 import os;
 import re;
 import urllib.error;
 import urllib.parse;
 import urllib.request;
-import from db { load_env_file }
+import from db { load_env_file, get_user_by_email, get_user_by_oauth_id }
+import from .auth_sync { resolve_token_identity }
 
 glob JOBS: list[dict[str, str | int]] = [
     {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local"},
@@ -604,4 +606,112 @@ def fetch(
         filtered_jobs.append(job);
     }
     return filtered_jobs[:n];
+}
+
+def:pub get_user_tailored_jobs(
+    email: str | None = None,
+    token: str | None = None
+) -> dict[str, any] {
+    clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
+    resolved_info = resolve_token_identity(token) if token else {};
+
+    if not clean_email and resolved_info.get("email") {
+        clean_email = str(resolved_info["email"]).strip().lower();
+    }
+
+    oauth_id = resolved_info.get("user_id");
+
+    user: any = None;
+    if clean_email {
+        try {
+            user = get_user_by_email(clean_email);
+        } except Exception {}
+    }
+    if user is None and oauth_id {
+        try {
+            user = get_user_by_oauth_id(str(oauth_id), auth_provider="google");
+        } except Exception {}
+    }
+    
+    if user and user.get("cached_job_query") {
+        query_dict: dict[str, any] = {};
+        try {
+            query_dict = json.loads(str(user["cached_job_query"]));
+        } except Exception {
+            query_dict = {};
+        }
+        if query_dict and "search" in query_dict {
+            search_term = str(query_dict.get("search", "")).strip() or "Software Engineer";
+            loc_term = query_dict.get("location");
+            clean_loc = str(loc_term).strip() if loc_term else None;
+            if clean_loc == "Remote" or (clean_loc and "remote" in clean_loc.lower()) {
+                clean_loc = "Remote";
+            }
+            sal_term = query_dict.get("salary");
+            clean_sal: int | None = None;
+            if sal_term is not None {
+                try {
+                    clean_sal = int(sal_term);
+                } except ValueError {
+                    clean_sal = None;
+                }
+            }
+            ct_term = query_dict.get("contract_type");
+            comp_term = query_dict.get("company");
+            src_term = str(query_dict.get("source", "all"));
+
+            fetched_jobs: list[dict[str, any]] = [];
+            try {
+                fetched_jobs = fetch(
+                    n=20,
+                    search=search_term,
+                    location=clean_loc,
+                    salary=clean_sal,
+                    contract_type=str(ct_term) if ct_term is not None else None,
+                    company=str(comp_term) if comp_term is not None else None,
+                    source=src_term
+                );
+            } except Exception {}
+
+            if fetched_jobs {
+                return {
+                    "ok": True,
+                    "jobs": fetched_jobs,
+                    "query": query_dict,
+                    "tailored": True,
+                    "onboarding_completed": bool(user.get("onboarding_completed"))
+                };
+            }
+
+            # Fallback to local jobs matching preferences
+            fallback_jobs: list[dict[str, any]] = [];
+            for j in JOBS {
+                s_low = search_term.lower();
+                j_text = f"{j.get('title', '')} {j.get('desc', '')} {j.get('tags', '')}".lower();
+                matches_s = any([w in j_text for w in s_low.split() if len(w) > 2]) if s_low else True;
+                matches_l = True;
+                if clean_loc and clean_loc.lower() != "remote" {
+                    matches_l = clean_loc.lower() in str(j.get("location", "")).lower();
+                }
+                if matches_s or matches_l {
+                    fallback_jobs.append(dict(j));
+                }
+            }
+            return {
+                "ok": True,
+                "jobs": fallback_jobs if fallback_jobs else [dict(j) for j in JOBS],
+                "query": query_dict,
+                "tailored": True,
+                "onboarding_completed": bool(user.get("onboarding_completed"))
+            };
+        }
+    }
+    
+    return {
+        "ok": True,
+        "jobs": [dict(j) for j in JOBS],
+        "query": None,
+        "tailored": False,
+        "onboarding_completed": bool(user.get("onboarding_completed")) if user else False
+    };
 }

@@ -1,6 +1,6 @@
-import from "@jac/runtime" { jacIsLoggedIn, Navigate, jacLogout }
+import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate, jacLogout }
 import from "@hugeicons/react" { HugeiconsIcon }
-import from "@hugeicons/core-free-icons" { Search01Icon, Bookmark01Icon, Logout01Icon }
+import from "@hugeicons/core-free-icons" { Search01Icon, Bookmark01Icon, Logout01Icon, SparklesIcon }
 import from .ui.button { Button }
 import from .ui.input { Input }
 import from .ui.badge { Badge }
@@ -9,7 +9,7 @@ import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescrip
 import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
-import from ..services.jobs { list_jobs }
+import from ..services.jobs { list_jobs, get_user_tailored_jobs }
 
 def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str, active: bool, saved: bool, onSelect: Callable[[], None], onSave: Callable[[], None]) -> JsxElement {
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
@@ -32,31 +32,67 @@ def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str,
     </Card>;
 }
 
-def:pub JobSearchFeed() -> JsxElement {
+def:pub JobSearchFeed -> JsxElement {
+    nav = useNavigate();
     if not jacIsLoggedIn() {
         return <Navigate to="/login" replace={True} />;
     }
-    has jobs: list[dict[str, str | int]] = [];
+    has jobs: list[dict[str, any]] = [];
     has loading: bool = True;
     has query: str = "";
     has loc_query: str = "";
     has selected_id: int = 0;
     has saved_ids: list[int] = [];
+    has is_tailored: bool = False;
+    has tailored_summary: str = "";
 
     async can with entry {
-        jobs = await list_jobs();
+        tok: str = "";
+        try {
+            tok = str(localStorage.getItem("jac_token") or "");
+        } except Exception {}
+        tailored_res: any = None;
+        try {
+            tailored_res = await get_user_tailored_jobs(token=tok);
+        } except Exception {}
+
+        init_jobs: list[dict[str, any]] = [];
+        if tailored_res and tailored_res.get("ok") {
+            if tailored_res.get("jobs") {
+                init_jobs = tailored_res.get("jobs");
+            }
+            if tailored_res.get("query") {
+                q_dict = tailored_res.get("query");
+                is_tailored = True;
+                s_val = str(q_dict.get("search", "Software Engineer"));
+                l_val = str(q_dict.get("location", "Remote"));
+                sal_val = f" · ${q_dict.get('salary')}+" if q_dict.get("salary") else "";
+                ct_val = f" · {q_dict.get('contract_type')}" if q_dict.get("contract_type") else "";
+                tailored_summary = f"{s_val} · {l_val}{sal_val}{ct_val}";
+                if q_dict.get("search") {
+                    query = str(q_dict.get("search"));
+                }
+                if q_dict.get("location") {
+                    loc_query = str(q_dict.get("location"));
+                }
+            }
+        }
+        if not init_jobs {
+            init_jobs = await list_jobs();
+        }
+        jobs = init_jobs;
         loading = False;
     }
 
-    def matches(j: dict[str, str | int]) -> bool {
-        hay = (str(j["title"]) + " " + str(j["company"]) + " " + str(j["tags"])).lower();
-        return query.strip().lower() in hay and loc_query.strip().lower() in str(j["location"]).lower();
+    def matches(j: dict[str, any]) -> bool {
+        hay = (str(j.get("title", "")) + " " + str(j.get("company", "")) + " " + str(j.get("tags", ""))).lower();
+        return query.strip().lower() in hay and loc_query.strip().lower() in str(j.get("location", "")).lower();
     }
 
     filtered = [j for j in jobs if matches(j)];
-    sel: dict[str, str | int] | None = None;
+    sel: dict[str, any] | None = None;
     for j in filtered {
-        if int(j["id"]) == selected_id {
+        if int(j.get("id", 0)) == selected_id {
             sel = j;
         }
     }
@@ -64,17 +100,18 @@ def:pub JobSearchFeed() -> JsxElement {
         sel = filtered[0];
     }
 
-    def is_saved(j: dict[str, str | int]) -> bool {
+    def is_saved(j: dict[str, any]) -> bool {
+        jid = int(j.get("id", 0));
         for sid in saved_ids {
-            if sid == int(j["id"]) {
+            if sid == jid {
                 return True;
             }
         }
         return False;
     }
 
-    def toggle_save(j: dict[str, str | int]) {
-        jid = int(j["id"]);
+    def toggle_save(j: dict[str, any]) {
+        jid = int(j.get("id", 0));
         if is_saved(j) {
             saved_ids = [sid for sid in saved_ids if sid != jid];
         } else {
@@ -82,7 +119,7 @@ def:pub JobSearchFeed() -> JsxElement {
         }
     }
 
-    def toggle_selected_save() {
+    def toggle_selected_save {
         if sel is not None {
             toggle_save(sel);
         }
@@ -95,7 +132,20 @@ def:pub JobSearchFeed() -> JsxElement {
         <TopNav />
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 pt-8 pb-16 pl-6 pr-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {loading and <div className="flex items-center justify-center p-16"><Spinner /></div>}
-            {not loading and <div className="flex flex-col gap-6">
+            {(not loading) and <div className="flex flex-col gap-6">
+                {is_tailored and bool(tailored_summary) and <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 text-sm text-foreground shadow-xs animate-in fade-in duration-300">
+                    <div className="flex items-center gap-2">
+                        <HugeiconsIcon icon={SparklesIcon} strokeWidth={2} className="size-4 text-primary shrink-0" />
+                        <span>
+                            {"Showing jobs tailored to your preferences: "}
+                            <strong className="font-semibold text-primary">{tailored_summary}</strong>
+                        </span>
+                    </div>
+                    <Link to="/me" className="inline-flex items-center gap-1 font-medium text-primary hover:underline text-xs">
+                        Edit in Profile →
+                    </Link>
+                </div>}
+
                 <div className="mx-auto flex w-full max-w-2xl flex-col items-stretch gap-2 rounded-2xl border border-primary/40 bg-card p-3 shadow-sm sm:flex-row sm:items-center">
                     <div className="relative flex-1">
                         <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -122,15 +172,15 @@ def:pub JobSearchFeed() -> JsxElement {
                         <h2 className="text-lg font-semibold tracking-tight">Based on your preferences</h2>
                         {for j in filtered {
                             <JobCard
-                                key={str(j["id"])}
-                                title={str(j["title"])}
-                                company={str(j["company"])}
-                                location={str(j["location"])}
-                                salary={str(j["salary"])}
-                                tags={str(j["tags"])}
-                                active={sel is not None and int(sel["id"]) == int(j["id"])}
+                                key={str(j.get("id", ""))}
+                                title={str(j.get("title", ""))}
+                                company={str(j.get("company", ""))}
+                                location={str(j.get("location", ""))}
+                                salary={str(j.get("salary", ""))}
+                                tags={str(j.get("tags", ""))}
+                                active={sel is not None and int(sel.get("id", 0)) == int(j.get("id", 0))}
                                 saved={is_saved(j)}
-                                onSelect={lambda { selected_id = int(j["id"]); }}
+                                onSelect={lambda { selected_id = int(j.get("id", 0)); }}
                                 onSave={lambda { toggle_save(j); }}
                             />
                         }}
@@ -140,19 +190,19 @@ def:pub JobSearchFeed() -> JsxElement {
                             <CardContent className="flex flex-col gap-4 pt-8 pb-8">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="flex flex-col gap-1">
-                                        <h2 className="text-2xl font-semibold tracking-tight">{str(sel["title"])}</h2>
-                                        <p className="text-muted-foreground">{str(sel["company"])}</p>
+                                        <h2 className="text-2xl font-semibold tracking-tight">{str(sel.get("title", ""))}</h2>
+                                        <p className="text-muted-foreground">{str(sel.get("company", ""))}</p>
                                     </div>
-                                    <Badge variant="outline">{str(sel["type"])}</Badge>
+                                    <Badge variant="outline">{str(sel.get("type", "Full-time"))}</Badge>
                                 </div>
                                 <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                                    <span>{str(sel["location"])}</span>
+                                    <span>{str(sel.get("location", ""))}</span>
                                     <span aria-hidden="true">·</span>
-                                    <span className="tabular-nums font-medium text-foreground">{"$" + str(sel["salary"])}</span>
+                                    <span className="tabular-nums font-medium text-foreground">{"$" + str(sel.get("salary", ""))}</span>
                                 </div>
-                                <p className="text-sm leading-relaxed text-foreground/90">{str(sel["desc"])}</p>
+                                <p className="text-sm leading-relaxed text-foreground/90">{str(sel.get("desc", ""))}</p>
                                 <div className="flex flex-wrap gap-1.5">
-                                    {for tag in str(sel["tags"]).split(", ") {
+                                    {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
                                     }}
                                 </div>
