@@ -608,3 +608,29 @@ def delete_application(app_id: int, conn: any = None) -> bool {
     db_conn.commit();
     return cur.rowcount > 0;
 }
+
+# --- Development Test User Helper ---
+
+def ensure_test_user(conn: any = None) -> dict[str, any] {
+    db_conn = conn if (conn is not None and not isinstance(conn, str)) else get_db_connection();
+    init_db(conn=db_conn);
+    test_email = "testuser@example.com";
+    user = get_user_by_email(test_email, conn=db_conn);
+    if user is not None {
+        res = dict(user);
+        res.pop("password_hash", None);
+        return res;
+    }
+    user = create_user(
+        name="Test User",
+        email=test_email,
+        phone=None,
+        password_hash=hash_password("testpassword123"),
+        auth_provider="local",
+        oauth_id="testuser_dev",
+        conn=db_conn
+    );
+    res = dict(user);
+    res.pop("password_hash", None);
+    return res;
+}

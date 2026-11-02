@@ -1,8 +1,9 @@
-import from "@jac/runtime" { Link, useLocation, useNavigate, jacIsLoggedIn, jacLogout }
+import from "@jac/runtime" { Link, useLocation, useNavigate, jacIsLoggedIn, jacLogout, jacSetToken }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" { Menu01Icon, Logout01Icon, UserAccountIcon }
 import from .ui.button { Button }
 import from .BrandMark { BrandMark }
+import from ..services.auth_sync { get_test_user_session }
 
 def:pub TopNav -> JsxElement {
     loc = useLocation();
@@ -10,11 +11,29 @@ def:pub TopNav -> JsxElement {
     path = loc.pathname;
     has logged_in: bool = False;
 
-    can with entry {
-        logged_in = jacIsLoggedIn();
+    async can with entry {
+        is_auth = jacIsLoggedIn();
+        logged_in = is_auth;
+        if not is_auth {
+            try {
+                if localStorage.getItem("dev_logged_out") != "true" {
+                    session = await get_test_user_session();
+                    if session and session.get("ok") and session.get("token") {
+                        jacSetToken(session["token"]);
+                        logged_in = True;
+                    }
+                }
+            } except Exception {
+                # Normal unauthenticated state
+            }
+        }
+
     }
 
     def handle_signout {
+        try {
+            localStorage.setItem("dev_logged_out", "true");
+        } except Exception {}
         jacLogout();
         logged_in = False;
         nav("/login");

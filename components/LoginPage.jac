@@ -15,7 +15,7 @@ import from .ui.input { Input }
 import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
-import from ..services.auth_sync { sync_user_session }
+import from ..services.auth_sync { sync_user_session, get_test_user_session }
 
 def GoogleIcon -> JsxElement {
     return <svg className="mr-2 size-4" viewBox="0 0 24 24" aria-hidden="true">
@@ -36,13 +36,27 @@ def:pub LoginPage -> JsxElement {
     has busy: bool = False;
     has busy_google: bool = False;
     has keep_signed_in: bool = False;
+    has is_dev_logged_out: bool = False;
 
     async can with entry {
         search = loc.search or "";
         if not search {
             if jacIsLoggedIn() {
                 nav("/jobs");
+                return;
             }
+            try {
+                logged_out_flag = (localStorage.getItem("dev_logged_out") == "true");
+                is_dev_logged_out = logged_out_flag;
+                if not logged_out_flag {
+                    session = await get_test_user_session();
+                    if session and session.get("ok") and session.get("token") {
+                        jacSetToken(session["token"]);
+                        nav("/jobs");
+                        return;
+                    }
+                }
+            } except Exception {}
             return;
         }
 
@@ -75,6 +89,9 @@ def:pub LoginPage -> JsxElement {
 
         if token_val {
             busy_google = True;
+            try {
+                localStorage.removeItem("dev_logged_out");
+            } except Exception {}
             jacSetToken(token_val);
             try {
                 await sync_user_session(token=token_val, auth_provider="google");
@@ -93,10 +110,36 @@ def:pub LoginPage -> JsxElement {
         message = "";
         busy_google = True;
         try {
+            try {
+                localStorage.removeItem("dev_logged_out");
+            } except Exception {}
             await jacSsoLogin("google");
         } except Exception {
             message = "Unable to start Google sign-in. Please try again.";
             busy_google = False;
+        }
+    }
+
+    async def handle_dev_autologin {
+        message = "";
+        busy = True;
+        try {
+            try {
+                localStorage.removeItem("dev_logged_out");
+            } except Exception {}
+            session = await get_test_user_session();
+            if session and session.get("ok") and session.get("token") {
+                jacSetToken(session["token"]);
+                busy = False;
+                nav("/jobs");
+            } else {
+                err_msg = str(session.get("error") if session else "Auto-login failed.");
+                message = err_msg;
+                busy = False;
+            }
+        } except Exception as e {
+            message = f"Auto-login failed: {str(e)}";
+            busy = False;
         }
     }
 
@@ -111,6 +154,9 @@ def:pub LoginPage -> JsxElement {
         ok: bool = False;
         signup_result: any = None;
         try {
+            try {
+                localStorage.removeItem("dev_logged_out");
+            } except Exception {}
             if mode == "signin" {
                 ok = await jacLogin(email.strip(), password);
                 if not ok {
@@ -164,6 +210,15 @@ def:pub LoginPage -> JsxElement {
                     {(not busy_google) and <GoogleIcon />}
                     {("Connecting to Google..." if busy_google else "Continue with Google")}
                 </Button>
+                {is_dev_logged_out and <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy or busy_google}
+                    className="h-11 bg-white/20 text-white hover:bg-white/30"
+                    onClick={handle_dev_autologin}
+                >
+                    {"Signing in as test user..." if busy else "Continue as Test User"}
+                </Button>}
                 <div className="h-0.5 rounded bg-primary-foreground/30" />
                 <Input placeholder="Enter Username" type="email" value={email} onChange={handle_email} className="h-11 border-transparent bg-background text-foreground placeholder:text-muted-foreground" />
                 <Input placeholder="Enter Password" type="password" value={password} onChange={handle_password} className="h-11 border-transparent bg-background text-foreground placeholder:text-muted-foreground" />

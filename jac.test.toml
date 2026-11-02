@@ -1,0 +1,7 @@
+# Test profile overlay for jac run --dev --profile test main.jac
+
+[serve.auth]
+auto_login = true
+
+[client.vite.define]
+"__DEV_AUTO_LOGIN__" = "true"
