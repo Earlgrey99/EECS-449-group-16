@@ -34,6 +34,10 @@ jobs:
       - name: Compile new applicant pages and backend
         run: |
           jac check components/ApplicantTools.jac
+          jac check components/JobSearchFeed.jac
+          jac check components/UserProfilePage.jac
+          jac check components/TrackerPage.jac
+          jac check components/TopNav.jac
           jac check services/applicant_demo.jac
           jac check 'pages/(auth)/tools.jac'
       - name: Run Jac tests
@@ -61,3 +65,27 @@ jobs:
             cat jac-server.log
             exit 1
           }
+      - name: Smoke test Wednesday demo profile and routes
+        run: |
+          export TURSO_DATABASE_URL="$RUNNER_TEMP/jaccit-demo-ci.db"
+          jac run --dev --profile test main.jac > jac-demo.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --max-time 3 --fail --silent http://127.0.0.1:8000/ -o /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat jac-demo.log
+            exit 1
+          fi
+          for route in login jobs me tracker tools; do
+            curl --max-time 10 --fail --silent "http://127.0.0.1:8000/$route" -o /dev/null || {
+              cat jac-demo.log
+              exit 1
+            }
+          done
