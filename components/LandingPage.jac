@@ -10,8 +10,13 @@ import from ..lib.utils { format_salary }
 
 def:pub LandingPage() -> JsxElement {
     has jobs: list[dict[str, str | int]] = [];
+    has did_load_landing: bool = False;
 
     async can with entry {
+        if did_load_landing {
+            return;
+        }
+        did_load_landing = True;
         jobs = await list_jobs();
     }
 
