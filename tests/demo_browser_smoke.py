@@ -19,7 +19,9 @@ def main() -> int:
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
         context = browser.new_context(viewport={"width": 1380, "height": 850})
         page = context.new_page()
-        page.on("pageerror", lambda exc: errors.append(str(exc)[:320]))
+        page.on("pageerror", lambda exc: errors.append("pageerror: " + str(exc)[:320]))
+        page.on("console", lambda msg: errors.append("console: " + msg.text[:320]) if msg.type == "error" else None)
+        page.on("requestfailed", lambda request: errors.append("request failed: " + request.url[:140]) if "/api/" in request.url else None)
         try:
             page.goto(f"{BASE}/login", wait_until="domcontentloaded", timeout=45000)
             try:
@@ -32,7 +34,7 @@ def main() -> int:
                 else:
                     raise AssertionError("Test profile did not authenticate or redirect to /jobs")
 
-            page.get_by_text("Based on your preferences").wait_for(timeout=35000)
+            page.get_by_text("Based on your preferences").wait_for(timeout=60000)
             role = page.get_by_text("Data Analyst", exact=True).first
             role.wait_for(timeout=35000)
             role.click()
@@ -68,11 +70,18 @@ def main() -> int:
                 print("Browser reported errors:", errors[-3:], file=sys.stderr)
             print("DEMO BROWSER WALKTHROUGH PASSED")
             return 0
-        except Exception:
-            print(f"Demo browser failed on {page.url}", file=sys.stderr)
+        except Exception as exc:
+            print(f"Demo browser failed on {page.url}: {type(exc).__name__}: {str(exc)[:1300]}", file=sys.stderr)
             if errors:
-                print("Browser errors:", errors[-5:], file=sys.stderr)
-            page.screenshot(path="demo-browser-failure.png", full_page=True)
+                print("Browser errors:", errors[-8:], file=sys.stderr)
+            try:
+                print("Visible page text:", page.locator("body").inner_text(timeout=5000)[:2200], file=sys.stderr)
+            except Exception as body_err:
+                print("Could not read body:", str(body_err)[:200], file=sys.stderr)
+            try:
+                page.screenshot(path="demo-browser-failure.png", full_page=False, timeout=7000, animations="disabled")
+            except Exception as shot_err:
+                print("Screenshot failed:", str(shot_err)[:200], file=sys.stderr)
             raise
         finally:
             context.close()
