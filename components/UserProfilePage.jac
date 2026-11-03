@@ -73,8 +73,13 @@ def:pub UserProfilePage -> JsxElement {
     has submitting: bool = False;
     has message: str = "";
     has is_returning_user: bool = False;
+    has did_init_profile: bool = False;
 
     async can with entry {
+        if did_init_profile {
+            return;
+        }
+        did_init_profile = True;
         if not jacIsLoggedIn() {
             nav("/login");
             return;

@@ -34,15 +34,24 @@ jobs:
       - name: Compile new applicant pages and backend
         run: |
           jac check components/ApplicantTools.jac
+          jac check components/JobSearchFeed.jac
+          jac check components/UserProfilePage.jac
+          jac check components/TrackerPage.jac
+          jac check components/TopNav.jac
+          jac check components/LoginPage.jac
+          jac check components/LandingPage.jac
           jac check services/applicant_demo.jac
           jac check 'pages/(auth)/tools.jac'
       - name: Run Jac tests
         run: jac test -d tests -v
       - name: Run applicant Python tests
         run: .jac/venv/bin/python -m unittest discover -s tests -p 'test_applicant*.py' -v
-      - name: Smoke test local web routes
+      - name: Install Chromium for browser walkthrough
+        run: .jac/venv/bin/python -m playwright install --with-deps chromium
+      - name: Smoke test Wednesday demo profile and routes
         run: |
-          jac run --dev main.jac > jac-server.log 2>&1 &
+          export TURSO_DATABASE_URL="$RUNNER_TEMP/jaccit-demo-ci.db"
+          jac run --dev --profile test main.jac > jac-demo.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           ready=0
@@ -54,10 +63,22 @@ jobs:
             sleep 2
           done
           if [ "$ready" -ne 1 ]; then
-            cat jac-server.log
+            cat jac-demo.log
             exit 1
           fi
-          curl --max-time 10 --fail --silent http://127.0.0.1:8000/tools -o /dev/null || {
-            cat jac-server.log
-            exit 1
-          }
+          for route in login jobs me tracker tools; do
+            curl --max-time 10 --fail --silent "http://127.0.0.1:8000/$route" -o /dev/null || {
+              cat jac-demo.log
+              exit 1
+            }
+          done
+          .jac/venv/bin/python tests/demo_browser_smoke.py
+      - name: Save browser failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-browser-failure
+          path: |
+            demo-browser-failure.png
+            jac-demo.log
+          if-no-files-found: ignore

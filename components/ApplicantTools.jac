@@ -30,9 +30,14 @@ def:pub ApplicantTools() -> JsxElement {
     has review: str = "";
     has reviewing: bool = False;
     has review_error: str = "";
+    has did_init_tools: bool = False;
 
     # Load the job clicked in the existing feed, if provided.
     async can with entry {
+        if did_init_tools {
+            return;
+        }
+        did_init_tools = True;
         if job_id {
             available_jobs = await list_jobs();
             for j in available_jobs {
