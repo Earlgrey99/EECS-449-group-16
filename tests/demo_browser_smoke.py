@@ -59,7 +59,7 @@ def main() -> int:
 
             page.goto(f"{BASE}/tracker", wait_until="domcontentloaded", timeout=30000)
             page.get_by_role("heading", name="Application tracker").wait_for(timeout=25000)
-            page.get_by_role("button", name="Insights").click()
+            page.get_by_role("tab", name="Insights").click()
             print("PASS: Tracker and insights")
 
             page.goto(f"{BASE}/me", wait_until="domcontentloaded", timeout=30000)
