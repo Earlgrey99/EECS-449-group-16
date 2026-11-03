@@ -38,6 +38,8 @@ jobs:
           jac check components/UserProfilePage.jac
           jac check components/TrackerPage.jac
           jac check components/TopNav.jac
+          jac check components/LoginPage.jac
+          jac check components/LandingPage.jac
           jac check services/applicant_demo.jac
           jac check 'pages/(auth)/tools.jac'
       - name: Run Jac tests
