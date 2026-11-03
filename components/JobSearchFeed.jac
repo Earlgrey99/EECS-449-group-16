@@ -67,8 +67,13 @@ def:pub JobSearchFeed() -> JsxElement {
     has saved_ids: list[str] = [];
     has is_tailored: bool = False;
     has tailored_summary: str = "";
+    has did_load_jobs: bool = False;
 
     async can with entry {
+        if did_load_jobs {
+            return;
+        }
+        did_load_jobs = True;
         tok: str = "";
         try {
             tok = str(localStorage.getItem("jac_token") or "");
