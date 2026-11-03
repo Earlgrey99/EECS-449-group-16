@@ -64,24 +64,31 @@ def:pub LoginPage -> JsxElement {
         token_val: str = "";
         error_val: str = "";
         msg_val: str = "";
+        email_val: str = "";
+        name_val: str = "";
 
         for part in query_str.split("&") {
             if "=" in part {
                 kv = part.split("=", 1);
                 k = kv[0];
                 v = kv[1];
+                clean_v = v.replace("+", " ").replace("%20", " ").replace("%40", "@");
                 if k == "token" {
                     token_val = v;
                 } elif k == "error" {
-                    error_val = v;
+                    error_val = clean_v;
                 } elif k == "message" {
-                    msg_val = v;
+                    msg_val = clean_v;
+                } elif k == "email" {
+                    email_val = clean_v;
+                } elif k == "name" {
+                    name_val = clean_v;
                 }
             }
         }
 
         if error_val {
-            clean_msg = msg_val.replace("+", " ").replace("%20", " ") if msg_val else "Google authentication was cancelled or failed.";
+            clean_msg = msg_val if msg_val else "Google authentication was cancelled or failed.";
             message = f"Sign-in failed: {clean_msg}";
             busy_google = False;
             return;
@@ -93,13 +100,30 @@ def:pub LoginPage -> JsxElement {
                 localStorage.removeItem("dev_logged_out");
             } except Exception {}
             jacSetToken(token_val);
+            synced_user = None;
             try {
-                await sync_user_session(token=token_val, auth_provider="google");
+                sync_res = await sync_user_session(
+                    token=token_val,
+                    email=email_val if email_val else None,
+                    name=name_val if name_val else None,
+                    auth_provider="google"
+                );
+                if sync_res and sync_res.get("ok") {
+                    synced_user = sync_res.get("user");
+                }
             } except Exception {
                 # Session is established
             }
             busy_google = False;
-            nav("/jobs");
+            is_done = False;
+            if synced_user is not None and isinstance(synced_user, dict) {
+                is_done = bool(synced_user.get("onboarding_completed"));
+            }
+            if not is_done {
+                nav("/me");
+            } else {
+                nav("/jobs");
+            }
         }
     }
 
@@ -153,6 +177,7 @@ def:pub LoginPage -> JsxElement {
         busy = True;
         ok: bool = False;
         signup_result: any = None;
+        synced_user: any = None;
         try {
             try {
                 localStorage.removeItem("dev_logged_out");
@@ -179,9 +204,21 @@ def:pub LoginPage -> JsxElement {
                 }
             }
             try {
-                await sync_user_session(email=email.strip(), name=email.strip().split("@")[0], auth_provider="local");
+                sync_res = await sync_user_session(email=email.strip(), name=email.strip().split("@")[0], auth_provider="local");
+                if sync_res and sync_res.get("ok") {
+                    synced_user = sync_res.get("user");
+                }
             } except Exception {}
-            nav("/jobs");
+            busy = False;
+            is_done_local = False;
+            if synced_user is not None and isinstance(synced_user, dict) {
+                is_done_local = bool(synced_user.get("onboarding_completed"));
+            }
+            if mode == "signup" or not is_done_local {
+                nav("/me");
+            } else {
+                nav("/jobs");
+            }
         } except Exception {
             message = "Something went wrong. Please try again.";
             busy = False;

@@ -1,5 +1,7 @@
 """Unit and integration tests for multi-provider API endpoints and unified format."""
 
+import from lib.utils { format_salary, format_desc }
+
 import json;
 import os;
 import urllib.request;
@@ -84,7 +86,7 @@ test "build endpoint URLs for USAJobs, Himalayas, and The Muse" {
 # --- Unified Normalizer Tests ---
 
 test "normalizers output unified schema across all providers" {
-    required_keys = ["id", "title", "company", "location", "salary", "type", "link", "snippet", "desc", "source", "tags"];
+    required_keys = ["id", "title", "company", "location", "salary", "type", "link", "snippet", "desc", "source", "tags", "logo"];
 
     # 1. Jooble
     raw_jooble = {
@@ -138,6 +140,7 @@ test "normalizers output unified schema across all providers" {
         "guid": "him-1234",
         "title": "Lead Backend Engineer",
         "companyName": "Distributed Cloud Corp",
+        "companyLogo": "https://cdn-images.himalayas.app/companies/logos/distributed-cloud.png",
         "locationRestrictions": [{"name": "Worldwide"}, {"name": "United States"}],
         "employmentType": "Contractor",
         "minSalary": 140000,
@@ -159,6 +162,7 @@ test "normalizers output unified schema across all providers" {
     assert "$140,000 - $180,000" == norm_himalayas["salary"];
     assert norm_himalayas["type"] == "Contractor";
     assert norm_himalayas["link"] == "https://himalayas.app/jobs/him-1234";
+    assert norm_himalayas["logo"] == "https://cdn-images.himalayas.app/companies/logos/distributed-cloud.png";
 
     # 4. The Muse
     raw_themuse = {
@@ -431,4 +435,48 @@ test "main CLI runs fetch with regional domain and custom source" {
         ]);
         assert code_json == 0;
     }
+}
+
+test "job listing salary and description formatting and logo extraction" {
+    # 1. Salary formatting (prevent $$ prefix)
+    assert format_salary("$130k-$190k") == "$130k-$190k";
+    assert format_salary("$$130k-$190k") == "$130k-$190k";
+    assert format_salary("$$$130k-$190k") == "$130k-$190k";
+    assert format_salary("115,000") == "$115,000";
+    assert format_salary("$115,000") == "$115,000";
+    assert format_salary("") == "";
+    assert format_salary(None) == "";
+
+    # 2. Description formatting (HTML preservation and plain text newline handling)
+    html_desc = "<p>Engineering role &nbsp; <b>Senior</b></p>";
+    assert format_desc(html_desc) == html_desc;
+    plain_desc = "Line 1\nLine 2\nLine 3";
+    assert format_desc(plain_desc) == "Line 1<br />Line 2<br />Line 3";
+
+    # 3. Logo extraction across providers
+    jooble_with_logo = normalize_jooble_job({"id": "1", "company_logo": "https://img.jooble.org/logo.png"});
+    assert jooble_with_logo["logo"] == "https://img.jooble.org/logo.png";
+    assert jooble_with_logo["source"] == "jooble";
+
+    usajobs_with_logo = normalize_usajobs_job({
+        "MatchedObjectDescriptor": {
+            "Logo": "https://data.usajobs.gov/logo.png"
+        }
+    });
+    assert usajobs_with_logo["logo"] == "https://data.usajobs.gov/logo.png";
+    assert usajobs_with_logo["source"] == "usajobs";
+
+    themuse_with_logo = normalize_themuse_job({
+        "id": 1,
+        "company": {"name": "Acme", "logo": "https://themuse.com/acme.png"}
+    });
+    assert themuse_with_logo["logo"] == "https://themuse.com/acme.png";
+    assert themuse_with_logo["source"] == "themuse";
+
+    himalayas_with_logo = normalize_himalayas_job({
+        "guid": "h-1",
+        "companyLogo": "https://himalayas.app/logo.png"
+    });
+    assert himalayas_with_logo["logo"] == "https://himalayas.app/logo.png";
+    assert himalayas_with_logo["source"] == "himalayas";
 }

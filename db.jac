@@ -65,6 +65,15 @@ def init_db(conn: any = None) {
             phone TEXT,
             auth_provider TEXT DEFAULT 'local',
             oauth_id TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            location TEXT,
+            sector TEXT,
+            job_titles TEXT,
+            salary_min INTEGER,
+            contract_type TEXT,
+            cached_job_query TEXT,
+            onboarding_completed INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -83,11 +92,47 @@ def init_db(conn: any = None) {
     if not has_oauth_id {
         db_conn.execute("ALTER TABLE users ADD COLUMN oauth_id TEXT;");
     }
+    has_first_name = any(column[1] == "first_name" for column in user_columns);
+    if not has_first_name {
+        db_conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT;");
+    }
+    has_last_name = any(column[1] == "last_name" for column in user_columns);
+    if not has_last_name {
+        db_conn.execute("ALTER TABLE users ADD COLUMN last_name TEXT;");
+    }
+    has_location = any(column[1] == "location" for column in user_columns);
+    if not has_location {
+        db_conn.execute("ALTER TABLE users ADD COLUMN location TEXT;");
+    }
+    has_sector = any(column[1] == "sector" for column in user_columns);
+    if not has_sector {
+        db_conn.execute("ALTER TABLE users ADD COLUMN sector TEXT;");
+    }
+    has_job_titles = any(column[1] == "job_titles" for column in user_columns);
+    if not has_job_titles {
+        db_conn.execute("ALTER TABLE users ADD COLUMN job_titles TEXT;");
+    }
+    has_salary_min = any(column[1] == "salary_min" for column in user_columns);
+    if not has_salary_min {
+        db_conn.execute("ALTER TABLE users ADD COLUMN salary_min INTEGER;");
+    }
+    has_contract_type = any(column[1] == "contract_type" for column in user_columns);
+    if not has_contract_type {
+        db_conn.execute("ALTER TABLE users ADD COLUMN contract_type TEXT;");
+    }
+    has_cached_job_query = any(column[1] == "cached_job_query" for column in user_columns);
+    if not has_cached_job_query {
+        db_conn.execute("ALTER TABLE users ADD COLUMN cached_job_query TEXT;");
+    }
+    has_onboarding_completed = any(column[1] == "onboarding_completed" for column in user_columns);
+    if not has_onboarding_completed {
+        db_conn.execute("ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;");
+    }
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_users_oauth ON users(auth_provider, oauth_id);");
 
     # Resumes table
     db_conn.execute("""
-        CREATE TABLE IF NOT EXISTS resumes (\
+        CREATE TABLE IF NOT EXISTS resumes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
@@ -178,13 +223,26 @@ def register_user(
         raise ValueError(f"User with email '{normalized_email}' already exists.");
     }
     pwd_hash = hash_password(password);
+    clean_name = name.strip();
+    fn_val = None;
+    ln_val = None;
+    if " " in clean_name {
+        parts = clean_name.split(" ", 1);
+        fn_val = parts[0].strip();
+        ln_val = parts[1].strip();
+    } else {
+        fn_val = clean_name;
+    }
     user = create_user(
-        name=name.strip(),
+        name=clean_name,
         email=normalized_email,
         phone=phone.strip() if phone else None,
         password_hash=pwd_hash,
         auth_provider="local",
         oauth_id=None,
+        first_name=fn_val,
+        last_name=ln_val,
+        onboarding_completed=0,
         conn=db_conn
     );
     res = dict(user);
@@ -224,13 +282,63 @@ def create_user(
     password_hash: str | None = None,
     auth_provider: str = "local",
     oauth_id: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    location: str | None = None,
+    sector: str | None = None,
+    job_titles: str | None = None,
+    salary_min: int | None = None,
+    contract_type: str | None = None,
+    cached_job_query: str | None = None,
+    onboarding_completed: int = 0,
     conn: any = None
 ) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
+    cols = ["name", "email", "phone", "password_hash", "auth_provider", "oauth_id"];
+    vals: list[any] = [name, email, phone, password_hash, auth_provider, oauth_id];
+
+    if first_name is not None {
+        cols.append("first_name");
+        vals.append(first_name);
+    }
+    if last_name is not None {
+        cols.append("last_name");
+        vals.append(last_name);
+    }
+    if location is not None {
+        cols.append("location");
+        vals.append(location);
+    }
+    if sector is not None {
+        cols.append("sector");
+        vals.append(sector);
+    }
+    if job_titles is not None {
+        cols.append("job_titles");
+        vals.append(job_titles);
+    }
+    if salary_min is not None {
+        cols.append("salary_min");
+        vals.append(salary_min);
+    }
+    if contract_type is not None {
+        cols.append("contract_type");
+        vals.append(contract_type);
+    }
+    if cached_job_query is not None {
+        cols.append("cached_job_query");
+        vals.append(cached_job_query);
+    }
+    if onboarding_completed is not None {
+        cols.append("onboarding_completed");
+        vals.append(onboarding_completed);
+    }
+
+    placeholders = ", ".join(["?" for _ in cols]);
     cur.execute(
-        "INSERT INTO users (name, email, phone, password_hash, auth_provider, oauth_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (name, email, phone, password_hash, auth_provider, oauth_id)
+        f"INSERT INTO users ({', '.join(cols)}) VALUES ({placeholders})",
+        tuple(vals)
     );
     db_conn.commit();
     user_id = cur.lastrowid;
@@ -289,6 +397,16 @@ def sync_oauth_user(
     clean_name = name.strip() if name and name.strip() else clean_email.split("@")[0];
     db_conn = conn if conn is not None else get_db_connection();
 
+    first_name_val = None;
+    last_name_val = None;
+    if clean_name and " " in clean_name {
+        parts = clean_name.split(" ", 1);
+        first_name_val = parts[0].strip();
+        last_name_val = parts[1].strip();
+    } else {
+        first_name_val = clean_name;
+    }
+
     existing_user: any = None;
     if oauth_id {
         existing_user = get_user_by_oauth_id(oauth_id, auth_provider=auth_provider, conn=db_conn);
@@ -313,6 +431,14 @@ def sync_oauth_user(
             updates.append("auth_provider = ?");
             params.append(auth_provider);
         }
+        if not existing_user.get("first_name") and first_name_val {
+            updates.append("first_name = ?");
+            params.append(first_name_val);
+        }
+        if not existing_user.get("last_name") and last_name_val {
+            updates.append("last_name = ?");
+            params.append(last_name_val);
+        }
         if updates {
             params.append(user_id);
             cur = db_conn.cursor();
@@ -331,6 +457,9 @@ def sync_oauth_user(
         auth_provider=auth_provider,
         oauth_id=oauth_id,
         password_hash=None,
+        first_name=first_name_val,
+        last_name=last_name_val,
+        onboarding_completed=0,
         conn=db_conn
     );
     res = dict(user);
@@ -355,12 +484,21 @@ def update_user(
     password_hash: str | None = None,
     auth_provider: str | None = None,
     oauth_id: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    location: str | None = None,
+    sector: str | None = None,
+    job_titles: str | None = None,
+    salary_min: int | None = None,
+    contract_type: str | None = None,
+    cached_job_query: str | None = None,
+    onboarding_completed: int | None = None,
     conn: any = None
 ) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     fields = [];
-    vals = [];
+    vals: list[any] = [];
     if name is not None {
         fields.append("name = ?");
         vals.append(name);
@@ -385,6 +523,42 @@ def update_user(
         fields.append("oauth_id = ?");
         vals.append(oauth_id);
     }
+    if first_name is not None {
+        fields.append("first_name = ?");
+        vals.append(first_name);
+    }
+    if last_name is not None {
+        fields.append("last_name = ?");
+        vals.append(last_name);
+    }
+    if location is not None {
+        fields.append("location = ?");
+        vals.append(location);
+    }
+    if sector is not None {
+        fields.append("sector = ?");
+        vals.append(sector);
+    }
+    if job_titles is not None {
+        fields.append("job_titles = ?");
+        vals.append(job_titles);
+    }
+    if salary_min is not None {
+        fields.append("salary_min = ?");
+        vals.append(salary_min);
+    }
+    if contract_type is not None {
+        fields.append("contract_type = ?");
+        vals.append(contract_type);
+    }
+    if cached_job_query is not None {
+        fields.append("cached_job_query = ?");
+        vals.append(cached_job_query);
+    }
+    if onboarding_completed is not None {
+        fields.append("onboarding_completed = ?");
+        vals.append(onboarding_completed);
+    }
     if not fields {
         return get_user_by_id(user_id, conn=db_conn);
     }
@@ -394,6 +568,67 @@ def update_user(
     cur.execute(sql, tuple(vals));
     db_conn.commit();
     return get_user_by_id(user_id, conn=db_conn);
+}
+
+def save_user_profile(
+    user_id: int,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    location: str | None = None,
+    sector: str | None = None,
+    job_titles: str | None = None,
+    salary_min: int | None = None,
+    contract_type: str | None = None,
+    cached_job_query: str | None = None,
+    onboarding_completed: int = 1,
+    conn: any = None
+) -> dict[str, any] | None {
+    full_name: str | None = None;
+    if first_name or last_name {
+        fn = (first_name or "").strip();
+        ln = (last_name or "").strip();
+        full_name = f"{fn} {ln}".strip() if (fn and ln) else (fn or ln);
+    }
+    user = update_user(
+        user_id=user_id,
+        name=full_name,
+        first_name=first_name,
+        last_name=last_name,
+        location=location,
+        sector=sector,
+        job_titles=job_titles,
+        salary_min=salary_min,
+        contract_type=contract_type,
+        cached_job_query=cached_job_query,
+        onboarding_completed=onboarding_completed,
+        conn=conn
+    );
+    if user is not None {
+        res = dict(user);
+        res.pop("password_hash", None);
+        return res;
+    }
+    return None;
+}
+
+def get_user_profile(user_id: int, conn: any = None) -> dict[str, any] | None {
+    user = get_user_by_id(user_id, conn=conn);
+    if user is None {
+        return None;
+    }
+    res = dict(user);
+    res.pop("password_hash", None);
+    return res;
+}
+
+def get_user_profile_by_email(email: str, conn: any = None) -> dict[str, any] | None {
+    user = get_user_by_email(email, conn=conn);
+    if user is None {
+        return None;
+    }
+    res = dict(user);
+    res.pop("password_hash", None);
+    return res;
 }
 
 def delete_user(user_id: int, conn: any = None) -> bool {
@@ -439,7 +674,7 @@ def get_resume_by_id(resume_id: int, conn: any = None) -> dict[str, any] | None 
 def list_resumes_by_user(user_id: int, conn: any = None) -> list[dict[str, any]] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
-    cur.execute("SELECT * FROM resumes WHERE user_id = ? ORDER BY id ASC", (user_id,));
+    cur.execute("SELECT * FROM resumes WHERE user_id = ? ORDER BY id DESC", (user_id,));
     rows = cur.fetchall();
     cols = [desc[0] for desc in cur.description];
     return [dict(zip(cols, r)) for r in rows];
@@ -455,7 +690,7 @@ def update_resume(
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     fields = [];
-    vals = [];
+    vals: list[any] = [];
     if title is not None {
         fields.append("title = ?");
         vals.append(title);
@@ -561,7 +796,7 @@ def update_application(
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     fields = [];
-    vals = [];
+    vals: list[any] = [];
     if job_title is not None {
         fields.append("job_title = ?");
         vals.append(job_title);
@@ -628,6 +863,14 @@ def ensure_test_user(conn: any = None) -> dict[str, any] {
         password_hash=hash_password("testpassword123"),
         auth_provider="local",
         oauth_id="testuser_dev",
+        first_name="Test",
+        last_name="User",
+        location="Remote",
+        sector="Technology",
+        job_titles="Software Engineer",
+        salary_min=100000,
+        contract_type="Full-time",
+        onboarding_completed=1,
         conn=db_conn
     );
     res = dict(user);

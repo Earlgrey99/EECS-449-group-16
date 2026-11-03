@@ -1,22 +1,24 @@
 """Job listings served to the search feed and multi-provider API fetcher."""
 
+import base64;
 import json;
 import os;
 import re;
 import urllib.error;
 import urllib.parse;
 import urllib.request;
-import from db { load_env_file }
+import from db { load_env_file, get_user_by_email, get_user_by_oauth_id }
+import from .auth_sync { resolve_token_identity }
 
 glob JOBS: list[dict[str, str | int]] = [
-    {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local"},
-    {"id": 2, "title": "Backend Engineer", "company": "Northwind Data", "location": "Remote", "salary": "128,000", "type": "Full-time", "tags": "Python, SQL, APIs", "desc": "Design and scale the data services behind our real-time reporting pipelines.", "link": "", "snippet": "Design and scale the data services behind our real-time reporting pipelines.", "source": "local"},
-    {"id": 3, "title": "Data Analyst", "company": "Cascade Health", "location": "Chicago, IL", "salary": "84,000", "type": "Full-time", "tags": "SQL, Dashboards, Python", "desc": "Turn clinical data into clear dashboards that care teams use every day.", "link": "", "snippet": "Turn clinical data into clear dashboards that care teams use every day.", "source": "local"},
-    {"id": 4, "title": "Machine Learning Intern", "company": "Orbit AI", "location": "Pittsburgh, PA", "salary": "42,000", "type": "Internship", "tags": "PyTorch, NLP, Research", "desc": "Work with our research group on language models for document understanding.", "link": "", "snippet": "Work with our research group on language models for document understanding.", "source": "local"},
-    {"id": 5, "title": "DevOps Engineer", "company": "Halcyon Cloud", "location": "Remote", "salary": "135,000", "type": "Full-time", "tags": "Kubernetes, Terraform, AWS", "desc": "Own the deployment platform that keeps our customer workloads healthy.", "link": "", "snippet": "Own the deployment platform that keeps our customer workloads healthy.", "source": "local"},
-    {"id": 6, "title": "Product Designer", "company": "Marigold Studio", "location": "Cleveland, OH", "salary": "96,000", "type": "Contract", "tags": "Figma, Prototyping, UX", "desc": "Shape product experiences for consumer apps from first sketch to shipped UI.", "link": "", "snippet": "Shape product experiences for consumer apps from first sketch to shipped UI.", "source": "local"},
-    {"id": 7, "title": "Software Engineer, New Grad", "company": "Bluepeak Systems", "location": "Columbus, OH", "salary": "98,000", "type": "Full-time", "tags": "Java, Spring, Distributed systems", "desc": "Join our platform team building reliable services for logistics customers.", "link": "", "snippet": "Join our platform team building reliable services for logistics customers.", "source": "local"},
-    {"id": 8, "title": "QA Automation Engineer", "company": "Riverbend Software", "location": "Remote", "salary": "89,000", "type": "Part-time", "tags": "Playwright, Python, CI/CD", "desc": "Grow our end-to-end test suite so releases stay fast and dependable.", "link": "", "snippet": "Grow our end-to-end test suite so releases stay fast and dependable.", "source": "local"},
+    {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local", "logo": ""},
+    {"id": 2, "title": "Backend Engineer", "company": "Northwind Data", "location": "Remote", "salary": "128,000", "type": "Full-time", "tags": "Python, SQL, APIs", "desc": "Design and scale the data services behind our real-time reporting pipelines.", "link": "", "snippet": "Design and scale the data services behind our real-time reporting pipelines.", "source": "local", "logo": ""},
+    {"id": 3, "title": "Data Analyst", "company": "Cascade Health", "location": "Chicago, IL", "salary": "84,000", "type": "Full-time", "tags": "SQL, Dashboards, Python", "desc": "Turn clinical data into clear dashboards that care teams use every day.", "link": "", "snippet": "Turn clinical data into clear dashboards that care teams use every day.", "source": "local", "logo": ""},
+    {"id": 4, "title": "Machine Learning Intern", "company": "Orbit AI", "location": "Pittsburgh, PA", "salary": "42,000", "type": "Internship", "tags": "PyTorch, NLP, Research", "desc": "Work with our research group on language models for document understanding.", "link": "", "snippet": "Work with our research group on language models for document understanding.", "source": "local", "logo": ""},
+    {"id": 5, "title": "DevOps Engineer", "company": "Halcyon Cloud", "location": "Remote", "salary": "135,000", "type": "Full-time", "tags": "Kubernetes, Terraform, AWS", "desc": "Own the deployment platform that keeps our customer workloads healthy.", "link": "", "snippet": "Own the deployment platform that keeps our customer workloads healthy.", "source": "local", "logo": ""},
+    {"id": 6, "title": "Product Designer", "company": "Marigold Studio", "location": "Cleveland, OH", "salary": "96,000", "type": "Contract", "tags": "Figma, Prototyping, UX", "desc": "Shape product experiences for consumer apps from first sketch to shipped UI.", "link": "", "snippet": "Shape product experiences for consumer apps from first sketch to shipped UI.", "source": "local", "logo": ""},
+    {"id": 7, "title": "Software Engineer, New Grad", "company": "Bluepeak Systems", "location": "Columbus, OH", "salary": "98,000", "type": "Full-time", "tags": "Java, Spring, Distributed systems", "desc": "Join our platform team building reliable services for logistics customers.", "link": "", "snippet": "Join our platform team building reliable services for logistics customers.", "source": "local", "logo": ""},
+    {"id": 8, "title": "QA Automation Engineer", "company": "Riverbend Software", "location": "Remote", "salary": "89,000", "type": "Part-time", "tags": "Playwright, Python, CI/CD", "desc": "Grow our end-to-end test suite so releases stay fast and dependable.", "link": "", "snippet": "Grow our end-to-end test suite so releases stay fast and dependable.", "source": "local", "logo": ""},
 ];
 
 def:pub list_jobs -> list[dict[str, str | int]] {
@@ -149,6 +151,7 @@ def build_themuse_url(domain: str | None = None, endpoint: str | None = None) ->
 # --- Normalizers ---
 
 def normalize_jooble_job(raw: dict[str, any]) -> dict[str, any] {
+    logo = str(raw.get("company_logo") or raw.get("companyLogo") or raw.get("logo") or "");
     return {
         "id": str(raw.get("id", "")),
         "title": raw.get("title", ""),
@@ -160,7 +163,8 @@ def normalize_jooble_job(raw: dict[str, any]) -> dict[str, any] {
         "snippet": raw.get("snippet", "") or "",
         "desc": raw.get("snippet", "") or "",
         "source": "jooble",
-        "tags": str(raw.get("tags", "")) if raw.get("tags") is not None else ""
+        "tags": str(raw.get("tags", "")) if raw.get("tags") is not None else "",
+        "logo": logo
     };
 }
 
@@ -216,6 +220,7 @@ def normalize_usajobs_job(item: dict[str, any]) -> dict[str, any] {
     if not app_uri and isinstance(apply_uris, list) and len(apply_uris) > 0 {
         app_uri = apply_uris[0];
     }
+    logo = str(descriptor.get("Logo") or descriptor.get("OrganizationLogo") or details.get("CompanyLogo") or descriptor.get("logo") or item.get("logo") or "");
     return {
         "id": str(item.get("MatchedObjectId") or descriptor.get("PositionID", "")),
         "title": descriptor.get("PositionTitle", ""),
@@ -227,7 +232,8 @@ def normalize_usajobs_job(item: dict[str, any]) -> dict[str, any] {
         "snippet": job_desc,
         "desc": job_desc,
         "source": "usajobs",
-        "tags": tags_str
+        "tags": tags_str,
+        "logo": logo
     };
 }
 
@@ -263,6 +269,7 @@ def normalize_himalayas_job(job: dict[str, any]) -> dict[str, any] {
     cats = job.get("categories", []);
     tags_str = ", ".join(cats) if isinstance(cats, list) else str(cats or "");
     desc = job.get("description") or job.get("excerpt") or "";
+    logo = str(job.get("companyLogo") or job.get("company_logo") or job.get("logo") or "");
     return {
         "id": str(job.get("guid", "")),
         "title": job.get("title", ""),
@@ -274,7 +281,8 @@ def normalize_himalayas_job(job: dict[str, any]) -> dict[str, any] {
         "snippet": job.get("excerpt", "") or "",
         "desc": desc,
         "source": "himalayas",
-        "tags": tags_str
+        "tags": tags_str,
+        "logo": logo
     };
 }
 
@@ -317,6 +325,13 @@ def normalize_themuse_job(job: dict[str, any]) -> dict[str, any] {
     if len(snippet) > 250 {
         snippet = snippet[:247] + "...";
     }
+    logo = "";
+    if isinstance(comp_obj, dict) {
+        logo = str(comp_obj.get("logo") or comp_obj.get("small_logo") or comp_obj.get("image") or "");
+    }
+    if not logo {
+        logo = str(job.get("company_logo") or job.get("companyLogo") or job.get("logo") or "");
+    }
     return {
         "id": str(job.get("id", "")),
         "title": job.get("name", ""),
@@ -328,7 +343,8 @@ def normalize_themuse_job(job: dict[str, any]) -> dict[str, any] {
         "snippet": snippet,
         "desc": contents,
         "source": "themuse",
-        "tags": tags_str
+        "tags": tags_str,
+        "logo": logo
     };
 }
 
@@ -604,4 +620,114 @@ def fetch(
         filtered_jobs.append(job);
     }
     return filtered_jobs[:n];
+}
+
+def:pub get_user_tailored_jobs(
+    email: str | None = None,
+    token: str | None = None,
+    conn: any = None
+) -> dict[str, any] {
+    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
+    clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
+    resolved_info = resolve_token_identity(token) if token else {};
+
+    if not clean_email and resolved_info.get("email") {
+        clean_email = str(resolved_info["email"]).strip().lower();
+    }
+
+    oauth_id = resolved_info.get("user_id");
+
+    user: any = None;
+    if clean_email {
+        try {
+            user = get_user_by_email(clean_email, conn=actual_conn);
+        } except Exception {}
+    }
+    if user is None and oauth_id {
+        try {
+            user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
+        } except Exception {}
+    }
+    
+    if user and user.get("cached_job_query") {
+        query_dict: dict[str, any] = {};
+        try {
+            query_dict = json.loads(str(user["cached_job_query"]));
+        } except Exception {
+            query_dict = {};
+        }
+        if query_dict and "search" in query_dict {
+            search_term = str(query_dict.get("search", "")).strip() or "Software Engineer";
+            loc_term = query_dict.get("location");
+            clean_loc = str(loc_term).strip() if loc_term else None;
+            if clean_loc == "Remote" or (clean_loc and "remote" in clean_loc.lower()) {
+                clean_loc = "Remote";
+            }
+            sal_term = query_dict.get("salary");
+            clean_sal: int | None = None;
+            if sal_term is not None {
+                try {
+                    clean_sal = int(sal_term);
+                } except ValueError {
+                    clean_sal = None;
+                }
+            }
+            ct_term = query_dict.get("contract_type");
+            comp_term = query_dict.get("company");
+            src_term = str(query_dict.get("source", "all"));
+
+            fetched_jobs: list[dict[str, any]] = [];
+            try {
+                fetched_jobs = fetch(
+                    n=20,
+                    search=search_term,
+                    location=clean_loc,
+                    salary=clean_sal,
+                    contract_type=str(ct_term) if ct_term is not None else None,
+                    company=str(comp_term) if comp_term is not None else None,
+                    source=src_term
+                );
+            } except Exception {}
+
+            if fetched_jobs {
+                return {
+                    "ok": True,
+                    "jobs": fetched_jobs,
+                    "query": query_dict,
+                    "tailored": True,
+                    "onboarding_completed": bool(user.get("onboarding_completed"))
+                };
+            }
+
+            # Fallback to local jobs matching preferences
+            fallback_jobs: list[dict[str, any]] = [];
+            for j in JOBS {
+                s_low = search_term.lower();
+                j_text = f"{j.get('title', '')} {j.get('desc', '')} {j.get('tags', '')}".lower();
+                matches_s = any([w in j_text for w in s_low.split() if len(w) > 2]) if s_low else True;
+                matches_l = True;
+                if clean_loc and clean_loc.lower() != "remote" {
+                    matches_l = clean_loc.lower() in str(j.get("location", "")).lower();
+                }
+                if matches_s or matches_l {
+                    fallback_jobs.append(dict(j));
+                }
+            }
+            return {
+                "ok": True,
+                "jobs": fallback_jobs if fallback_jobs else [dict(j) for j in JOBS],
+                "query": query_dict,
+                "tailored": True,
+                "onboarding_completed": bool(user.get("onboarding_completed"))
+            };
+        }
+    }
+    
+    return {
+        "ok": True,
+        "jobs": [dict(j) for j in JOBS],
+        "query": None,
+        "tailored": False,
+        "onboarding_completed": bool(user.get("onboarding_completed")) if user else False
+    };
 }
