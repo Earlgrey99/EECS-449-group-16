@@ -65,6 +65,8 @@ jobs:
             cat jac-server.log
             exit 1
           }
+      - name: Install Chromium for browser walkthrough
+        run: .jac/venv/bin/python -m playwright install --with-deps chromium
       - name: Smoke test Wednesday demo profile and routes
         run: |
           export TURSO_DATABASE_URL="$RUNNER_TEMP/jaccit-demo-ci.db"
@@ -89,3 +91,13 @@ jobs:
               exit 1
             }
           done
+          .jac/venv/bin/python tests/demo_browser_smoke.py
+      - name: Save browser failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-browser-failure
+          path: |
+            demo-browser-failure.png
+            jac-demo.log
+          if-no-files-found: ignore
