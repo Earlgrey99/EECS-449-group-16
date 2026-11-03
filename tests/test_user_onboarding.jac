@@ -184,10 +184,10 @@ test "generate_job_search_params uses DeepSeek API when mock response is receive
 }
 
 test "submit_profile_and_generate_query saves resume and caches query in database" {
-    init_db();
+    conn = make_test_db();
     test_user_email = "onboarding_test@example.com";
     try {
-        register_user(name="Onboarding User", email=test_user_email, password="password123");
+        register_user(name="Onboarding User", email=test_user_email, password="password123", conn=conn);
     } except Exception {}
 
     result = submit_profile_and_generate_query(
@@ -200,7 +200,8 @@ test "submit_profile_and_generate_query saves resume and caches query in databas
         salary_min=110000,
         contract_type="Full-time",
         resume_title="MyResume.pdf",
-        resume_content="Skills: React, TypeScript, Tailwind CSS, JavaScript"
+        resume_content="Skills: React, TypeScript, Tailwind CSS, JavaScript",
+        conn=conn
     );
 
     assert result["ok"] is True;
@@ -215,7 +216,7 @@ test "submit_profile_and_generate_query saves resume and caches query in databas
     assert user["onboarding_completed"] == 1;
 
     # Verify profile data endpoint
-    prof_data = get_user_profile_data(email=test_user_email);
+    prof_data = get_user_profile_data(email=test_user_email, conn=conn);
     assert prof_data["ok"] is True;
     assert prof_data["onboarding_completed"] is True;
     assert prof_data["cached_query"] is not None;
@@ -223,7 +224,7 @@ test "submit_profile_and_generate_query saves resume and caches query in databas
 }
 
 test "submit_profile_and_generate_query auto-provisions non-existent user instead of erroring" {
-    init_db();
+    conn = make_test_db();
     brand_new_email = "auto_provisioned_google_user@example.com";
     result = submit_profile_and_generate_query(
         email=brand_new_email,
@@ -233,7 +234,8 @@ test "submit_profile_and_generate_query auto-provisions non-existent user instea
         sector="Technology & Software",
         job_titles="DevOps Engineer",
         salary_min=135000,
-        contract_type="Full-time"
+        contract_type="Full-time",
+        conn=conn
     );
 
     assert result["ok"] is True;
@@ -247,7 +249,7 @@ test "submit_profile_and_generate_query auto-provisions non-existent user instea
     assert user["onboarding_completed"] == 1;
 
     # Verify DB user is created and retrievable
-    db_u = get_user_by_email(brand_new_email);
+    db_u = get_user_by_email(brand_new_email, conn=conn);
     assert db_u is not None;
     assert db_u["first_name"] == "Auto";
 }
@@ -260,10 +262,10 @@ test "get_user_profile_data returns synthetic profile for unknown user without f
 }
 
 test "get_user_tailored_jobs retrieves tailored jobs for onboarded user" {
-    init_db();
+    conn = make_test_db();
     email = "tailored_jobs_test@example.com";
     try {
-        register_user(name="Tailored User", email=email, password="password123");
+        register_user(name="Tailored User", email=email, password="password123", conn=conn);
     } except Exception {}
 
     # Submit profile to cache query
@@ -275,11 +277,12 @@ test "get_user_tailored_jobs retrieves tailored jobs for onboarded user" {
         sector="Technology & Software",
         job_titles="Backend Engineer",
         salary_min=120000,
-        contract_type="Full-time"
+        contract_type="Full-time",
+        conn=conn
     );
 
     # Retrieve tailored jobs
-    tailored = get_user_tailored_jobs(email=email);
+    tailored = get_user_tailored_jobs(email=email, conn=conn);
     assert tailored["ok"] is True;
     assert tailored["tailored"] is True;
     assert tailored["query"] is not None;

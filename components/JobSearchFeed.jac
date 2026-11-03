@@ -10,23 +10,45 @@ import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs, get_user_tailored_jobs }
+import from ..lib.utils { format_salary, format_desc }
 
-def:pub JobCard(title: str, company: str, location: str, salary: str, tags: str, active: bool, saved: bool, onSelect: Callable[[], None], onSave: Callable[[], None]) -> JsxElement {
+def:pub JobCard(
+    title: str,
+    company: str,
+    location: str,
+    salary: str,
+    tags: str,
+    active: bool,
+    saved: bool,
+    onSelect: Callable[[], None],
+    onSave: Callable[[], None],
+    logo: str = "",
+    source: str = ""
+) -> JsxElement {
+    sal_display = format_salary(salary);
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
         <CardContent className="flex flex-col gap-1.5 pt-5">
             <div className="flex items-start justify-between gap-2">
-                <h3 className="font-semibold leading-tight">{title}</h3>
+                <div className="flex items-start gap-2.5 min-w-0">
+                    {bool(logo) and <img src={logo} alt={company + " logo"} className="size-8 rounded border bg-background object-contain shrink-0 mt-0.5 p-0.5" />}
+                    <div className="min-w-0">
+                        <h3 className="font-semibold leading-tight truncate">{title}</h3>
+                        <p className="text-sm text-muted-foreground">{company}</p>
+                    </div>
+                </div>
                 <button onClick={onSave} className="shrink-0 rounded p-1 transition-colors hover:bg-muted" aria-label="Save job">
                     <HugeiconsIcon icon={Bookmark01Icon} strokeWidth={2} className={"size-4 " + ("fill-current text-primary" if saved else "text-muted-foreground")} />
                 </button>
             </div>
-            <p className="text-sm text-muted-foreground">{company}</p>
             <p className="text-sm text-muted-foreground">{location}</p>
-            <p className="text-sm font-medium tabular-nums">{"$" + salary}</p>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-                {for tag in tags.split(", ")[:2] {
-                    <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
-                }}
+            {bool(sal_display) and <p className="text-sm font-medium tabular-nums">{sal_display}</p>}
+            <div className="mt-1 flex items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                    {for tag in tags.split(", ")[:2] {
+                        <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
+                    }}
+                </div>
+                {bool(source) and <span className="text-xs text-muted-foreground shrink-0">{"via " + source}</span>}
             </div>
         </CardContent>
     </Card>;
@@ -178,6 +200,8 @@ def:pub JobSearchFeed() -> JsxElement {
                                 location={str(j.get("location", ""))}
                                 salary={str(j.get("salary", ""))}
                                 tags={str(j.get("tags", ""))}
+                                logo={str(j.get("logo") or j.get("companyLogo") or j.get("company_logo") or "")}
+                                source={str(j.get("source") or j.get("site") or "")}
                                 active={sel is not None and int(sel.get("id", 0)) == int(j.get("id", 0))}
                                 saved={is_saved(j)}
                                 onSelect={lambda { selected_id = int(j.get("id", 0)); }}
@@ -189,18 +213,28 @@ def:pub JobSearchFeed() -> JsxElement {
                         {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24">
                             <CardContent className="flex flex-col gap-4 pt-8 pb-8">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="flex flex-col gap-1">
-                                        <h2 className="text-2xl font-semibold tracking-tight">{str(sel.get("title", ""))}</h2>
-                                        <p className="text-muted-foreground">{str(sel.get("company", ""))}</p>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        {bool(str(sel.get("logo") or sel.get("companyLogo") or sel.get("company_logo") or "")) and <img
+                                            src={str(sel.get("logo") or sel.get("companyLogo") or sel.get("company_logo") or "")}
+                                            alt={str(sel.get("company", "")) + " logo"}
+                                            className="size-12 rounded-lg border bg-background object-contain shrink-0 p-1"
+                                        />}
+                                        <div className="flex flex-col gap-1 min-w-0">
+                                            <h2 className="text-2xl font-semibold tracking-tight">{str(sel.get("title", ""))}</h2>
+                                            <p className="text-muted-foreground">{str(sel.get("company", ""))}</p>
+                                        </div>
                                     </div>
-                                    <Badge variant="outline">{str(sel.get("type", "Full-time"))}</Badge>
+                                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                        <Badge variant="outline">{str(sel.get("type", "Full-time"))}</Badge>
+                                        {bool(str(sel.get("source") or sel.get("site") or "")) and <span className="text-xs text-muted-foreground">{"via " + str(sel.get("source") or sel.get("site") or "")}</span>}
+                                    </div>
                                 </div>
-                                <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                                     <span>{str(sel.get("location", ""))}</span>
-                                    <span aria-hidden="true">·</span>
-                                    <span className="tabular-nums font-medium text-foreground">{"$" + str(sel.get("salary", ""))}</span>
+                                    {bool(format_salary(str(sel.get("salary", "")))) and <span aria-hidden="true">·</span>}
+                                    {bool(format_salary(str(sel.get("salary", "")))) and <span className="tabular-nums font-medium text-foreground">{format_salary(str(sel.get("salary", "")))}</span>}
                                 </div>
-                                <p className="text-sm leading-relaxed text-foreground/90">{str(sel.get("desc", ""))}</p>
+                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>

@@ -11,14 +11,14 @@ import from db { load_env_file, get_user_by_email, get_user_by_oauth_id }
 import from .auth_sync { resolve_token_identity }
 
 glob JOBS: list[dict[str, str | int]] = [
-    {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local"},
-    {"id": 2, "title": "Backend Engineer", "company": "Northwind Data", "location": "Remote", "salary": "128,000", "type": "Full-time", "tags": "Python, SQL, APIs", "desc": "Design and scale the data services behind our real-time reporting pipelines.", "link": "", "snippet": "Design and scale the data services behind our real-time reporting pipelines.", "source": "local"},
-    {"id": 3, "title": "Data Analyst", "company": "Cascade Health", "location": "Chicago, IL", "salary": "84,000", "type": "Full-time", "tags": "SQL, Dashboards, Python", "desc": "Turn clinical data into clear dashboards that care teams use every day.", "link": "", "snippet": "Turn clinical data into clear dashboards that care teams use every day.", "source": "local"},
-    {"id": 4, "title": "Machine Learning Intern", "company": "Orbit AI", "location": "Pittsburgh, PA", "salary": "42,000", "type": "Internship", "tags": "PyTorch, NLP, Research", "desc": "Work with our research group on language models for document understanding.", "link": "", "snippet": "Work with our research group on language models for document understanding.", "source": "local"},
-    {"id": 5, "title": "DevOps Engineer", "company": "Halcyon Cloud", "location": "Remote", "salary": "135,000", "type": "Full-time", "tags": "Kubernetes, Terraform, AWS", "desc": "Own the deployment platform that keeps our customer workloads healthy.", "link": "", "snippet": "Own the deployment platform that keeps our customer workloads healthy.", "source": "local"},
-    {"id": 6, "title": "Product Designer", "company": "Marigold Studio", "location": "Cleveland, OH", "salary": "96,000", "type": "Contract", "tags": "Figma, Prototyping, UX", "desc": "Shape product experiences for consumer apps from first sketch to shipped UI.", "link": "", "snippet": "Shape product experiences for consumer apps from first sketch to shipped UI.", "source": "local"},
-    {"id": 7, "title": "Software Engineer, New Grad", "company": "Bluepeak Systems", "location": "Columbus, OH", "salary": "98,000", "type": "Full-time", "tags": "Java, Spring, Distributed systems", "desc": "Join our platform team building reliable services for logistics customers.", "link": "", "snippet": "Join our platform team building reliable services for logistics customers.", "source": "local"},
-    {"id": 8, "title": "QA Automation Engineer", "company": "Riverbend Software", "location": "Remote", "salary": "89,000", "type": "Part-time", "tags": "Playwright, Python, CI/CD", "desc": "Grow our end-to-end test suite so releases stay fast and dependable.", "link": "", "snippet": "Grow our end-to-end test suite so releases stay fast and dependable.", "source": "local"},
+    {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local", "logo": ""},
+    {"id": 2, "title": "Backend Engineer", "company": "Northwind Data", "location": "Remote", "salary": "128,000", "type": "Full-time", "tags": "Python, SQL, APIs", "desc": "Design and scale the data services behind our real-time reporting pipelines.", "link": "", "snippet": "Design and scale the data services behind our real-time reporting pipelines.", "source": "local", "logo": ""},
+    {"id": 3, "title": "Data Analyst", "company": "Cascade Health", "location": "Chicago, IL", "salary": "84,000", "type": "Full-time", "tags": "SQL, Dashboards, Python", "desc": "Turn clinical data into clear dashboards that care teams use every day.", "link": "", "snippet": "Turn clinical data into clear dashboards that care teams use every day.", "source": "local", "logo": ""},
+    {"id": 4, "title": "Machine Learning Intern", "company": "Orbit AI", "location": "Pittsburgh, PA", "salary": "42,000", "type": "Internship", "tags": "PyTorch, NLP, Research", "desc": "Work with our research group on language models for document understanding.", "link": "", "snippet": "Work with our research group on language models for document understanding.", "source": "local", "logo": ""},
+    {"id": 5, "title": "DevOps Engineer", "company": "Halcyon Cloud", "location": "Remote", "salary": "135,000", "type": "Full-time", "tags": "Kubernetes, Terraform, AWS", "desc": "Own the deployment platform that keeps our customer workloads healthy.", "link": "", "snippet": "Own the deployment platform that keeps our customer workloads healthy.", "source": "local", "logo": ""},
+    {"id": 6, "title": "Product Designer", "company": "Marigold Studio", "location": "Cleveland, OH", "salary": "96,000", "type": "Contract", "tags": "Figma, Prototyping, UX", "desc": "Shape product experiences for consumer apps from first sketch to shipped UI.", "link": "", "snippet": "Shape product experiences for consumer apps from first sketch to shipped UI.", "source": "local", "logo": ""},
+    {"id": 7, "title": "Software Engineer, New Grad", "company": "Bluepeak Systems", "location": "Columbus, OH", "salary": "98,000", "type": "Full-time", "tags": "Java, Spring, Distributed systems", "desc": "Join our platform team building reliable services for logistics customers.", "link": "", "snippet": "Join our platform team building reliable services for logistics customers.", "source": "local", "logo": ""},
+    {"id": 8, "title": "QA Automation Engineer", "company": "Riverbend Software", "location": "Remote", "salary": "89,000", "type": "Part-time", "tags": "Playwright, Python, CI/CD", "desc": "Grow our end-to-end test suite so releases stay fast and dependable.", "link": "", "snippet": "Grow our end-to-end test suite so releases stay fast and dependable.", "source": "local", "logo": ""},
 ];
 
 def:pub list_jobs -> list[dict[str, str | int]] {
@@ -151,6 +151,7 @@ def build_themuse_url(domain: str | None = None, endpoint: str | None = None) ->
 # --- Normalizers ---
 
 def normalize_jooble_job(raw: dict[str, any]) -> dict[str, any] {
+    logo = str(raw.get("company_logo") or raw.get("companyLogo") or raw.get("logo") or "");
     return {
         "id": str(raw.get("id", "")),
         "title": raw.get("title", ""),
@@ -162,7 +163,8 @@ def normalize_jooble_job(raw: dict[str, any]) -> dict[str, any] {
         "snippet": raw.get("snippet", "") or "",
         "desc": raw.get("snippet", "") or "",
         "source": "jooble",
-        "tags": str(raw.get("tags", "")) if raw.get("tags") is not None else ""
+        "tags": str(raw.get("tags", "")) if raw.get("tags") is not None else "",
+        "logo": logo
     };
 }
 
@@ -218,6 +220,7 @@ def normalize_usajobs_job(item: dict[str, any]) -> dict[str, any] {
     if not app_uri and isinstance(apply_uris, list) and len(apply_uris) > 0 {
         app_uri = apply_uris[0];
     }
+    logo = str(descriptor.get("Logo") or descriptor.get("OrganizationLogo") or details.get("CompanyLogo") or descriptor.get("logo") or item.get("logo") or "");
     return {
         "id": str(item.get("MatchedObjectId") or descriptor.get("PositionID", "")),
         "title": descriptor.get("PositionTitle", ""),
@@ -229,7 +232,8 @@ def normalize_usajobs_job(item: dict[str, any]) -> dict[str, any] {
         "snippet": job_desc,
         "desc": job_desc,
         "source": "usajobs",
-        "tags": tags_str
+        "tags": tags_str,
+        "logo": logo
     };
 }
 
@@ -265,6 +269,7 @@ def normalize_himalayas_job(job: dict[str, any]) -> dict[str, any] {
     cats = job.get("categories", []);
     tags_str = ", ".join(cats) if isinstance(cats, list) else str(cats or "");
     desc = job.get("description") or job.get("excerpt") or "";
+    logo = str(job.get("companyLogo") or job.get("company_logo") or job.get("logo") or "");
     return {
         "id": str(job.get("guid", "")),
         "title": job.get("title", ""),
@@ -276,7 +281,8 @@ def normalize_himalayas_job(job: dict[str, any]) -> dict[str, any] {
         "snippet": job.get("excerpt", "") or "",
         "desc": desc,
         "source": "himalayas",
-        "tags": tags_str
+        "tags": tags_str,
+        "logo": logo
     };
 }
 
@@ -319,6 +325,13 @@ def normalize_themuse_job(job: dict[str, any]) -> dict[str, any] {
     if len(snippet) > 250 {
         snippet = snippet[:247] + "...";
     }
+    logo = "";
+    if isinstance(comp_obj, dict) {
+        logo = str(comp_obj.get("logo") or comp_obj.get("small_logo") or comp_obj.get("image") or "");
+    }
+    if not logo {
+        logo = str(job.get("company_logo") or job.get("companyLogo") or job.get("logo") or "");
+    }
     return {
         "id": str(job.get("id", "")),
         "title": job.get("name", ""),
@@ -330,7 +343,8 @@ def normalize_themuse_job(job: dict[str, any]) -> dict[str, any] {
         "snippet": snippet,
         "desc": contents,
         "source": "themuse",
-        "tags": tags_str
+        "tags": tags_str,
+        "logo": logo
     };
 }
 
@@ -610,8 +624,10 @@ def fetch(
 
 def:pub get_user_tailored_jobs(
     email: str | None = None,
-    token: str | None = None
+    token: str | None = None,
+    conn: any = None
 ) -> dict[str, any] {
+    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
     clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
     resolved_info = resolve_token_identity(token) if token else {};
 
@@ -624,12 +640,12 @@ def:pub get_user_tailored_jobs(
     user: any = None;
     if clean_email {
         try {
-            user = get_user_by_email(clean_email);
+            user = get_user_by_email(clean_email, conn=actual_conn);
         } except Exception {}
     }
     if user is None and oauth_id {
         try {
-            user = get_user_by_oauth_id(str(oauth_id), auth_provider="google");
+            user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
         } except Exception {}
     }
     

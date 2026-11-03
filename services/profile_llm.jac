@@ -181,8 +181,10 @@ def:pub submit_profile_and_generate_query(
     contract_type: str | None = None,
     resume_title: str | None = None,
     resume_content: str | None = None,
-    token: str | None = None
+    token: str | None = None,
+    conn: any = None
 ) -> dict[str, any] {
+    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
     if not email or not email.strip() {
         return {"ok": False, "error": "Email is required."};
     }
@@ -200,9 +202,9 @@ def:pub submit_profile_and_generate_query(
     resolved_info = resolve_token_identity(token) if token else {};
     oauth_id = resolved_info.get("user_id");
 
-    user: any = get_user_by_email(clean_email);
+    user: any = get_user_by_email(clean_email, conn=actual_conn);
     if user is None and oauth_id {
-        user = get_user_by_oauth_id(str(oauth_id), auth_provider="google");
+        user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
     }
 
     if user is None {
@@ -212,7 +214,8 @@ def:pub submit_profile_and_generate_query(
                 email=clean_email,
                 name=clean_name,
                 oauth_id=str(oauth_id) if oauth_id else None,
-                auth_provider="google"
+                auth_provider="google",
+                conn=actual_conn
             );
         } except Exception as err {
             return {"ok": False, "error": f"Failed to initialize user record: {str(err)}"};
@@ -229,7 +232,8 @@ def:pub submit_profile_and_generate_query(
                 user_id=user_id,
                 title=clean_title,
                 content=resume_content,
-                file_path=None
+                file_path=None,
+                conn=actual_conn
             );
         } except Exception {}
     }
@@ -258,7 +262,8 @@ def:pub submit_profile_and_generate_query(
         salary_min=salary_min,
         contract_type=clean_ct,
         cached_job_query=query_json_str,
-        onboarding_completed=1
+        onboarding_completed=1,
+        conn=actual_conn
     );
 
     return {
@@ -270,8 +275,10 @@ def:pub submit_profile_and_generate_query(
 
 def:pub get_user_profile_data(
     email: str | None = None,
-    token: str | None = None
+    token: str | None = None,
+    conn: any = None
 ) -> dict[str, any] {
+    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
     clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
     resolved_info = resolve_token_identity(token) if token else {};
 
@@ -283,10 +290,10 @@ def:pub get_user_profile_data(
 
     user: any = None;
     if clean_email {
-        user = get_user_by_email(clean_email);
+        user = get_user_by_email(clean_email, conn=actual_conn);
     }
     if user is None and oauth_id {
-        user = get_user_by_oauth_id(str(oauth_id), auth_provider="google");
+        user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
     }
 
     if user is not None {
@@ -294,10 +301,10 @@ def:pub get_user_profile_data(
         fn = user.get("first_name") or resolved_info.get("first_name");
         ln = user.get("last_name") or resolved_info.get("last_name");
         if (not user.get("first_name") and fn) or (not user.get("last_name") and ln) {
-            user = save_user_profile(user_id=user_id, first_name=fn, last_name=ln);
+            user = save_user_profile(user_id=user_id, first_name=fn, last_name=ln, conn=actual_conn);
         }
 
-        resumes = list_resumes_by_user(user_id);
+        resumes = list_resumes_by_user(user_id, conn=actual_conn);
         latest_resume = resumes[0] if resumes else None;
 
         cached_query_dict = None;
@@ -326,7 +333,8 @@ def:pub get_user_profile_data(
                 email=clean_email,
                 name=name_val,
                 oauth_id=str(oauth_id) if oauth_id else None,
-                auth_provider="google"
+                auth_provider="google",
+                conn=actual_conn
             );
             return {
                 "ok": True,

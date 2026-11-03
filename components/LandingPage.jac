@@ -6,6 +6,7 @@ import from .ui.card { Card, CardContent }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs }
+import from ..lib.utils { format_salary }
 
 def:pub LandingPage() -> JsxElement {
     has jobs: list[dict[str, str | int]] = [];
@@ -28,7 +29,7 @@ def:pub LandingPage() -> JsxElement {
                                             <CardContent className="flex flex-col gap-2 pt-5">
                                                 <h3 className="font-semibold leading-tight">{str(j["title"])}</h3>
                                                 <p className="text-sm text-muted-foreground">{str(j["location"])}</p>
-                                                <p className="text-sm font-medium tabular-nums text-primary">{"$" + str(j["salary"])}</p>
+                                                {bool(format_salary(str(j.get("salary", "")))) and <p className="text-sm font-medium tabular-nums text-primary">{format_salary(str(j.get("salary", "")))}</p>}
                                             </CardContent>
                                         </Card>
                                     </div>
