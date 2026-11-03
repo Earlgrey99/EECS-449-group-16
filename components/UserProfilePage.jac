@@ -519,12 +519,13 @@ def:pub UserProfilePage -> JsxElement {
                                     {("Replace with new PDF resume" if existing_resume_title else "Upload your PDF resume")}
                                 </p>
                                 <p className="text-xs text-muted-foreground mb-4">Supported format: PDF up to 10MB</p>
-                                <label className="cursor-pointer">
+                                <label htmlFor="resume-upload" className="cursor-pointer">
                                     <Button type="button" variant="outline" size="sm" className="pointer-events-none gap-2">
                                         <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-4" />
                                         <span>Browse PDF file</span>
                                     </Button>
                                     <input
+                                        id="resume-upload"
                                         type="file"
                                         accept=".pdf,application/pdf"
                                         onChange={handle_file}
