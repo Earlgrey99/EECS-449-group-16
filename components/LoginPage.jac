@@ -37,9 +37,14 @@ def:pub LoginPage -> JsxElement {
     has busy_google: bool = False;
     has keep_signed_in: bool = False;
     has is_dev_logged_out: bool = False;
+    has last_processed_login_query: str = "__first__";
 
     async can with entry {
         search = loc.search or "";
+        if search == last_processed_login_query {
+            return;
+        }
+        last_processed_login_query = search;
         if not search {
             if jacIsLoggedIn() {
                 nav("/jobs");
