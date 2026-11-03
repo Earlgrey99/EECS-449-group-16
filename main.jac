@@ -85,6 +85,10 @@ import from services.locations {
     search_cities
 }
 
+import from services.compatibility {
+    get_resume_match_scores
+}
+
 glob APPLICATION_COLUMNS: list[str] = [
     "Company name",
     "Job title",

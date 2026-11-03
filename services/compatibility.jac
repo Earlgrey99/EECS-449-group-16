@@ -14,7 +14,7 @@ import re;
 import base64;
 import io;
 import from db { get_user_by_email, get_user_by_oauth_id, list_resumes_by_user }
-import from .auth_sync { resolve_token_identity }
+import from services.auth_sync { resolve_token_identity }
 
 # How much each part counts toward the final score (they add up to 1.0).
 glob SKILL_WEIGHT: float = 0.60;
