@@ -75,7 +75,8 @@ import from services.jobs {
     fetch_themuse,
     fetch,
     list_jobs,
-    get_user_tailored_jobs
+    get_user_tailored_jobs,
+    search_jobs
 }
 import from services.profile_llm {
     submit_profile_and_generate_query,

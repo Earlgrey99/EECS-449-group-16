@@ -603,8 +603,12 @@ def fetch(
         if location is not None and str(location).strip() != "" {
             loc_target = str(location).strip().lower();
             job_loc = str(job.get("location", "")).lower();
-            if job_loc and loc_target not in job_loc and "remote" not in loc_target {
-                if job_loc not in loc_target {
+            if "remote" in loc_target {
+                if "remote" not in job_loc {
+                    continue;
+                }
+            } else {
+                if job_loc and loc_target not in job_loc and job_loc not in loc_target {
                     continue;
                 }
             }
@@ -729,5 +733,120 @@ def:pub get_user_tailored_jobs(
         "query": None,
         "tailored": False,
         "onboarding_completed": bool(user.get("onboarding_completed")) if user else False
+    };
+}
+
+def:pub search_jobs(
+    search: str = "",
+    location: str | None = None,
+    salary: int | None = None,
+    contract_type: str | None = None,
+    company: str | None = None,
+    source: str = "all",
+    n: int = 20
+) -> dict[str, any] {
+    load_env_file();
+    search_term = str(search or "").strip();
+    clean_loc = str(location).strip() if (location and str(location).strip()) else None;
+    if clean_loc == "Remote" or (clean_loc and "remote" in clean_loc.lower()) {
+        clean_loc = "Remote";
+    }
+    clean_sal: int | None = None;
+    if salary is not None {
+        try {
+            clean_sal = int(salary);
+        } except (ValueError, TypeError) {
+            clean_sal = None;
+        }
+    }
+    ct_term = str(contract_type).strip() if (contract_type and str(contract_type).strip()) else None;
+    comp_term = str(company).strip() if (company and str(company).strip()) else None;
+    src_term = str(source or "all").strip().lower();
+
+    fetched_jobs: list[dict[str, any]] = [];
+    if src_term != "local" and (search_term or clean_loc or comp_term or clean_sal is not None or ct_term) {
+        try {
+            fetched_jobs = fetch(
+                n=n,
+                search=search_term or "Software",
+                location=clean_loc,
+                salary=clean_sal,
+                contract_type=ct_term,
+                company=comp_term,
+                source=src_term
+            );
+        } except Exception {}
+    }
+
+    if fetched_jobs {
+        return {
+            "ok": True,
+            "jobs": fetched_jobs,
+            "count": len(fetched_jobs),
+            "query": {
+                "search": search_term,
+                "location": clean_loc or "",
+                "salary": clean_sal,
+                "contract_type": ct_term or "",
+                "company": comp_term or "",
+                "source": src_term
+            },
+            "is_custom": True
+        };
+    }
+
+    fallback_jobs: list[dict[str, any]] = [];
+    for j in JOBS {
+        if search_term {
+            s_low = search_term.lower();
+            j_text = f"{j.get('title', '')} {j.get('company', '')} {j.get('desc', '')} {j.get('tags', '')}".lower();
+            words = [w for w in s_low.split() if len(w) > 2];
+            if words and not any([w in j_text for w in words]) {
+                continue;
+            }
+        }
+        if clean_loc {
+            if clean_loc.lower() == "remote" {
+                if "remote" not in str(j.get("location", "")).lower() {
+                    continue;
+                }
+            } else {
+                if clean_loc.lower() not in str(j.get("location", "")).lower() {
+                    continue;
+                }
+            }
+        }
+        if comp_term {
+            if not _matches_company(j.get("company"), comp_term) {
+                continue;
+            }
+        }
+        if ct_term {
+            if not _matches_contract_type(j.get("type"), ct_term) {
+                continue;
+            }
+        }
+        if clean_sal is not None {
+            sal_vals = _extract_salary_values(j.get("salary"));
+            if not sal_vals or max(sal_vals) < clean_sal {
+                continue;
+            }
+        }
+        fallback_jobs.append(dict(j));
+    }
+
+    return {
+        "ok": True,
+        "jobs": fallback_jobs[:n],
+        "count": len(fallback_jobs[:n]),
+        "query": {
+            "search": search_term,
+            "location": clean_loc or "",
+            "salary": clean_sal,
+            "contract_type": ct_term or "",
+            "company": comp_term or "",
+            "source": src_term
+        },
+        "is_custom": True
     };
 }
