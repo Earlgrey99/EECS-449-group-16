@@ -11,8 +11,13 @@ def:pub TopNav -> JsxElement {
     path = loc.pathname;
     has logged_in: bool = False;
     has dropdown_open: bool = False;
+    has did_init_nav: bool = False;
 
     async can with entry {
+        if did_init_nav {
+            return;
+        }
+        did_init_nav = True;
         is_auth = jacIsLoggedIn();
         logged_in = is_auth;
         if not is_auth {
