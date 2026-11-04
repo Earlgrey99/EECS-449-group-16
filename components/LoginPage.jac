@@ -240,9 +240,13 @@ def:pub LoginPage -> JsxElement {
 
     return <div className="flex min-h-svh flex-col bg-primary/5">
         <TopNav />
-        <main className="flex flex-1 items-center justify-center px-6 pt-10 pb-16">
+        <main className="flex flex-1 flex-col items-center justify-center px-6 pt-10 pb-16">
+            {mode == "signup" and <div className="mb-8 flex flex-col items-center gap-3 text-center animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <h1 className="text-balance text-4xl font-bold tracking-tight text-primary md:text-5xl">Welcome to Launchpad!</h1>
+                <p className="text-muted-foreground">Enter your email address and we'll help you launch your dream career.</p>
+            </div>}
             <form onSubmit={handle_submit} className="flex w-full max-w-md flex-col gap-4 rounded-2xl bg-primary p-8 text-primary-foreground shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <h1 className="text-3xl font-semibold tracking-tight">{"Sign in" if mode == "signin" else "Sign up"}</h1>
+                {mode == "signin" and <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>}
                 <p className="text-sm text-primary-foreground/75">
                     {"New? "}
                     <button type="button" onClick={lambda { mode = "signup" if mode == "signin" else "signin"; message = ""; }} className="font-medium text-primary-foreground underline underline-offset-4">
@@ -280,7 +284,7 @@ def:pub LoginPage -> JsxElement {
                 </button>
                 {message and <p className="text-sm font-medium text-amber-200">{message}</p>}
                 <Button type="submit" disabled={busy or busy_google} className="h-12 w-3/4 self-center rounded-full bg-emerald-500 text-white shadow-md hover:bg-emerald-500/90">
-                    {"Signing in..." if busy else ("Sign in" if mode == "signin" else "Create account")}
+                    {"Signing in..." if busy else ("Sign in" if mode == "signin" else "Get Started")}
                 </Button>
                 <Link to="/" className="self-center text-xs text-primary-foreground/60 underline-offset-4 hover:underline">Back to home</Link>
             </form>
