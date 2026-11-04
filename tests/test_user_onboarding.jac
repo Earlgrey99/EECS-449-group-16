@@ -289,3 +289,51 @@ test "get_user_tailored_jobs retrieves tailored jobs for onboarded user" {
     assert tailored["query"]["search"] == "Backend Engineer";
     assert len(tailored["jobs"]) > 0;
 }
+
+test "multi-select contract types, locations, and sectors are saved and retrievable" {
+    conn = make_test_db();
+    email = "multiselect_user@example.com";
+    register_user(name="Multi User", email=email, password="password123", conn=conn);
+
+    res = submit_profile_and_generate_query(
+        email=email,
+        first_name="Multi",
+        last_name="User",
+        location="Remote, Chicago, IL, Seattle, WA",
+        sector="Technology & Software, Finance & Banking",
+        job_titles="Full Stack Developer, Data Engineer",
+        salary_min=115000,
+        contract_type="Full-time, Contract",
+        conn=conn
+    );
+
+    assert res["ok"] is True;
+    prof_data = get_user_profile_data(email=email, conn=conn);
+    assert prof_data["ok"] is True;
+    u = prof_data["user"];
+    assert "Remote" in u["location"] and "Chicago" in u["location"];
+    assert "Technology & Software" in u["sector"] and "Finance & Banking" in u["sector"];
+    assert "Full-time" in u["contract_type"] and "Contract" in u["contract_type"];
+}
+
+test "get_user_tailored_jobs matches listings with multi-select contract types and locations" {
+    conn = make_test_db();
+    email = "multi_tailored@example.com";
+    register_user(name="Multi Tailored", email=email, password="password123", conn=conn);
+
+    submit_profile_and_generate_query(
+        email=email,
+        first_name="Multi",
+        last_name="Tailored",
+        location="Remote, Chicago, IL",
+        sector="Technology & Software",
+        job_titles="Data Analyst",
+        salary_min=80000,
+        contract_type="Full-time, Contract",
+        conn=conn
+    );
+
+    tailored = get_user_tailored_jobs(email=email, conn=conn);
+    assert tailored["ok"] is True;
+    assert len(tailored["jobs"]) > 0;
+}

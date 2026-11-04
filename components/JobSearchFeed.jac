@@ -428,8 +428,8 @@ def:pub JobSearchFeed() -> JsxElement {
                         }}
                     </section>
                     <section className="lg:col-span-3">
-                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24">
-                            <CardContent className="flex flex-col gap-4 pt-8 pb-8">
+                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24 max-h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
+                            <CardContent className="flex flex-col gap-4 pt-8 pb-8 overflow-y-auto">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="flex items-center gap-3 min-w-0">
                                         {bool(str(sel.get("logo") or sel.get("companyLogo") or sel.get("company_logo") or "")) and <img

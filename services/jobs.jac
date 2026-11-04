@@ -58,14 +58,17 @@ def _matches_contract_type(job_type: any, target_type: str) -> bool {
         return False;
     }
     jt = str(job_type).strip().lower();
-    tt = str(target_type).strip().lower();
-    if tt == jt or tt in jt {
-        return True;
-    }
+    target_str = str(target_type).strip().lower();
+    targets = [t.strip() for t in target_str.split(",") if t.strip()] if "," in target_str else [target_str];
     jt_norm = jt.replace("-", " ");
-    tt_norm = tt.replace("-", " ");
-    if tt_norm == jt_norm or tt_norm in jt_norm {
-        return True;
+    for tt in targets {
+        if tt == jt or tt in jt {
+            return True;
+        }
+        tt_norm = tt.replace("-", " ");
+        if tt_norm == jt_norm or tt_norm in jt_norm {
+            return True;
+        }
     }
     return False;
 }
@@ -534,6 +537,27 @@ def fetch_themuse(
 
 # --- Unified Fetch ---
 
+
+def parse_multi_locations(loc_str: str) -> list[str] {
+    if not loc_str {
+        return [];
+    }
+    raw_parts = [p.strip() for p in loc_str.split(",") if p.strip()];
+    locs: list[str] = [];
+    idx = 0;
+    while idx < len(raw_parts) {
+        part = raw_parts[idx];
+        if idx + 1 < len(raw_parts) and len(raw_parts[idx + 1]) == 2 and raw_parts[idx + 1].isalpha() {
+            locs.append(f"{part}, {raw_parts[idx + 1]}");
+            idx = idx + 2;
+        } else {
+            locs.append(part);
+            idx = idx + 1;
+        }
+    }
+    return locs;
+}
+
 def fetch(
     n: int,
     search: str,
@@ -601,16 +625,25 @@ def fetch(
             }
         }
         if location is not None and str(location).strip() != "" {
-            loc_target = str(location).strip().lower();
+            loc_target_str = str(location).strip().lower();
+            targets = [t.lower() for t in parse_multi_locations(loc_target_str)] if parse_multi_locations(loc_target_str) else [loc_target_str];
             job_loc = str(job.get("location", "")).lower();
-            if "remote" in loc_target {
-                if "remote" not in job_loc {
-                    continue;
+            matched_any_loc = False;
+            for loc_target in targets {
+                if "remote" in loc_target {
+                    if "remote" in job_loc {
+                        matched_any_loc = True;
+                        break;
+                    }
+                } else {
+                    if job_loc and (loc_target in job_loc or job_loc in loc_target) {
+                        matched_any_loc = True;
+                        break;
+                    }
                 }
-            } else {
-                if job_loc and loc_target not in job_loc and job_loc not in loc_target {
-                    continue;
-                }
+            }
+            if not matched_any_loc {
+                continue;
             }
         }
         if search and src in ["themuse", "all"] {
@@ -806,14 +839,25 @@ def:pub search_jobs(
             }
         }
         if clean_loc {
-            if clean_loc.lower() == "remote" {
-                if "remote" not in str(j.get("location", "")).lower() {
-                    continue;
+            clean_loc_low = clean_loc.lower();
+            targets = [t.lower() for t in parse_multi_locations(clean_loc_low)] if parse_multi_locations(clean_loc_low) else [clean_loc_low];
+            j_loc_str = str(j.get("location", "")).lower();
+            matched_loc = False;
+            for t in targets {
+                if "remote" in t {
+                    if "remote" in j_loc_str {
+                        matched_loc = True;
+                        break;
+                    }
+                } else {
+                    if t in j_loc_str or j_loc_str in t {
+                        matched_loc = True;
+                        break;
+                    }
                 }
-            } else {
-                if clean_loc.lower() not in str(j.get("location", "")).lower() {
-                    continue;
-                }
+            }
+            if not matched_loc {
+                continue;
             }
         }
         if comp_term {

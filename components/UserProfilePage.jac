@@ -56,12 +56,12 @@ def:pub UserProfilePage -> JsxElement {
     has email: str = "";
     has first_name: str = "";
     has last_name: str = "";
-    has location: str = "Remote";
+    has locations: list[str] = ["Remote"];
     has loc_search: str = "";
-    has sector: str = "Technology & Software";
+    has sectors: list[str] = ["Technology & Software"];
     has job_titles: str = "";
     has salary_min: str = "100000";
-    has contract_type: str = "Full-time";
+    has contract_types: list[str] = ["Full-time"];
     has resume_title: str = "";
     has resume_content: str = "";
     has existing_resume_title: str = "";
@@ -120,15 +120,37 @@ def:pub UserProfilePage -> JsxElement {
                 first_name = loaded_fn;
                 last_name = loaded_ln;
 
-                loaded_loc = "Remote";
                 if u.get("location") {
-                    loaded_loc = str(u.get("location"));
+                    raw_loc = str(u.get("location")).strip();
+                    if raw_loc {
+                        split_locs = [x.strip() for x in raw_loc.split(",") if x.strip()];
+                        # Detect composite labels like City, State
+                        norm_locs: list[str] = [];
+                        idx = 0;
+                        while idx < len(split_locs) {
+                            part = split_locs[idx];
+                            if idx + 1 < len(split_locs) and len(split_locs[idx + 1]) == 2 and split_locs[idx + 1].isupper() {
+                                norm_locs.append(f"{part}, {split_locs[idx + 1]}");
+                                idx = idx + 2;
+                            } else {
+                                norm_locs.append(part);
+                                idx = idx + 1;
+                            }
+                        }
+                        if norm_locs {
+                            locations = norm_locs;
+                        }
+                    }
                 }
-                location = loaded_loc;
-                loc_search = loaded_loc;
 
                 if u.get("sector") {
-                    sector = str(u.get("sector"));
+                    raw_sec = str(u.get("sector")).strip();
+                    if raw_sec {
+                        sec_list = [s.strip() for s in raw_sec.split(",") if s.strip()];
+                        if sec_list {
+                            sectors = sec_list;
+                        }
+                    }
                 }
                 if u.get("job_titles") {
                     job_titles = str(u.get("job_titles"));
@@ -137,7 +159,13 @@ def:pub UserProfilePage -> JsxElement {
                     salary_min = str(u.get("salary_min"));
                 }
                 if u.get("contract_type") {
-                    contract_type = str(u.get("contract_type"));
+                    raw_ct = str(u.get("contract_type")).strip();
+                    if raw_ct {
+                        ct_list = [c.strip() for c in raw_ct.split(",") if c.strip()];
+                        if ct_list {
+                            contract_types = ct_list;
+                        }
+                    }
                 }
                 if bool(u.get("onboarding_completed")) {
                     is_returning_user = True;
@@ -180,10 +208,40 @@ def:pub UserProfilePage -> JsxElement {
         }
     }
 
-    def select_city(city_label: str) {
-        location = city_label;
-        loc_search = city_label;
+    def add_location(city_label: str) {
+        clean_lbl = city_label.strip();
+        if clean_lbl and clean_lbl not in locations {
+            locations = locations + [clean_lbl];
+        }
+        loc_search = "";
         city_dropdown_open = False;
+    }
+
+    def remove_location(city_label: str) {
+        locations = [l for l in locations if l != city_label];
+        if len(locations) == 0 {
+            locations = ["Remote"];
+        }
+    }
+
+    def toggle_sector(sec: str) {
+        if sec in sectors {
+            if len(sectors) > 1 {
+                sectors = [s for s in sectors if s != sec];
+            }
+        } else {
+            sectors = sectors + [sec];
+        }
+    }
+
+    def toggle_contract_type(ct: str) {
+        if ct in contract_types {
+            if len(contract_types) > 1 {
+                contract_types = [c for c in contract_types if c != ct];
+            }
+        } else {
+            contract_types = contract_types + [ct];
+        }
     }
 
     def append_title(title: str) {
@@ -229,8 +287,14 @@ def:pub UserProfilePage -> JsxElement {
             message = "Please enter your email.";
             return;
         }
-        if not location.strip() {
-            location = "Remote";
+        if len(locations) == 0 {
+            locations = ["Remote"];
+        }
+        if len(sectors) == 0 {
+            sectors = ["Technology & Software"];
+        }
+        if len(contract_types) == 0 {
+            contract_types = ["Full-time"];
         }
 
         submitting = True;
@@ -248,16 +312,20 @@ def:pub UserProfilePage -> JsxElement {
             tok = str(localStorage.getItem("jac_token") or "");
         } except Exception {}
 
+        loc_str = ", ".join(locations);
+        sec_str = ", ".join(sectors);
+        ct_str = ", ".join(contract_types);
+
         try {
             res = await submit_profile_and_generate_query(
                 email=email.strip(),
                 first_name=first_name.strip(),
                 last_name=last_name.strip(),
-                location=location.strip(),
-                sector=sector.strip(),
+                location=loc_str,
+                sector=sec_str,
                 job_titles=job_titles.strip(),
                 salary_min=sal_int,
-                contract_type=contract_type.strip(),
+                contract_type=ct_str,
                 resume_title=resume_title.strip() if resume_title else None,
                 resume_content=resume_content if resume_content else None,
                 token=tok
@@ -283,15 +351,15 @@ def:pub UserProfilePage -> JsxElement {
             {loading_initial and <div className="flex items-center justify-center p-20"><Spinner className="size-8 text-primary" /></div>}
             {(not loading_initial) and <div className="flex flex-col gap-8">
                 <div className="flex flex-col gap-2 text-center sm:text-left">
-                    <div className="flex items-center gap-2 text-sm font-semibold tracking-wide uppercase text-primary">
-                        <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} className="size-4" />
-                        <span>{"Profile & Career Preferences" if is_returning_user else "Welcome to Jaccit · Onboarding"}</span>
+                    <div className="inline-flex items-center gap-2 self-center sm:self-start rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                        <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} className="size-3.5" />
+                        {("Profile Settings" if is_returning_user else "Applicant Onboarding (Step 1 of 1)")}
                     </div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                        {"Update Your Job Preferences" if is_returning_user else "Let's personalize your job feed"}
+                        {("Update Your Job Preferences" if is_returning_user else "Let's personalize your job feed")}
                     </h1>
                     <p className="text-muted-foreground text-sm max-w-xl">
-                        {"Adjust your preferences and resume below to regenerate your tailored job query." if is_returning_user else "Tell us about yourself and your target roles to synthesize custom search parameters and personalize your job feed."}
+                        {("Adjust your preferences and resume below to regenerate your tailored job query." if is_returning_user else "Tell us about yourself and your target roles to synthesize custom search parameters and personalize your job feed.")}
                     </p>
                 </div>
 
@@ -310,17 +378,17 @@ def:pub UserProfilePage -> JsxElement {
                                 <div className="flex flex-col gap-1.5">
                                     <label className="text-xs font-medium text-foreground">First Name *</label>
                                     <Input
-                                        placeholder="e.g. Ada"
+                                        placeholder="Ada"
                                         value={first_name}
                                         onChange={handle_first_name}
-                                        className="h-10 bg-background"
                                         required
+                                        className="h-10 bg-background"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <label className="text-xs font-medium text-foreground">Last Name</label>
                                     <Input
-                                        placeholder="e.g. Lovelace"
+                                        placeholder="Lovelace"
                                         value={last_name}
                                         onChange={handle_last_name}
                                         className="h-10 bg-background"
@@ -332,29 +400,47 @@ def:pub UserProfilePage -> JsxElement {
                                 <label className="text-xs font-medium text-foreground">Email Address *</label>
                                 <Input
                                     type="email"
-                                    placeholder="e.g. user@example.com"
+                                    placeholder="ada@example.com"
                                     value={email}
                                     onChange={handle_email}
-                                    className="h-10 bg-background"
                                     required
+                                    className="h-10 bg-background"
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5 relative">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-xs font-medium text-foreground">Location (City, State or Remote) *</label>
+                                    <label className="text-xs font-medium text-foreground">Target Locations (select multiple) *</label>
                                     <button
                                         type="button"
-                                        onClick={lambda { select_city("Remote"); }}
-                                        className={"text-xs font-medium px-2 py-0.5 rounded transition-colors " + ("bg-primary text-primary-foreground" if location == "Remote" else "bg-muted text-muted-foreground hover:bg-muted/80")}
+                                        onClick={lambda { add_location("Remote"); }}
+                                        className={"text-xs font-medium px-2 py-0.5 rounded transition-colors " + ("bg-primary text-primary-foreground font-semibold" if "Remote" in locations else "bg-muted text-muted-foreground hover:bg-muted/80")}
                                     >
-                                        Remote
+                                        + Remote
                                     </button>
                                 </div>
+
+                                <div className="flex flex-wrap items-center gap-1.5 pb-1">
+                                    {for loc in locations {
+                                        <Badge key={loc} variant="secondary" className="gap-1 pl-2.5 pr-1.5 py-1 text-xs">
+                                            <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-3 text-muted-foreground" />
+                                            <span>{loc}</span>
+                                            <button
+                                                type="button"
+                                                onClick={lambda { remove_location(loc); }}
+                                                className="ml-1 rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                                                aria-label={f"Remove {loc}"}
+                                            >
+                                                ✕
+                                            </button>
+                                        </Badge>
+                                    }}
+                                </div>
+
                                 <div className="relative">
                                     <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                                     <Input
-                                        placeholder="Search city (e.g. Seattle, WA or Remote)..."
+                                        placeholder="Type city name to add (e.g. Seattle, WA, Chicago, IL)..."
                                         value={loc_search}
                                         onChange={handle_loc_search}
                                         onFocus={open_city_dropdown}
@@ -364,11 +450,11 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>
                                 {city_dropdown_open and <div className="absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100">
                                     <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground border-b mb-1">
-                                        <span>Select a city or choose Remote</span>
+                                        <span>Click city to add to your target locations</span>
                                         <button
                                             type="button"
                                             onClick={lambda { city_dropdown_open = False; }}
-                                            className="hover:text-foreground font-semibold px-1 text-xs"
+                                            className="hover:text-foreground font-semibold px-1 text-xs cursor-pointer"
                                         >
                                             ✕ Close
                                         </button>
@@ -378,14 +464,14 @@ def:pub UserProfilePage -> JsxElement {
                                         <button
                                             key={c}
                                             type="button"
-                                            onClick={lambda { select_city(c); }}
-                                            className={"flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition-colors hover:bg-muted " + ("font-semibold text-primary bg-primary/5" if location == c else "text-foreground")}
+                                            onClick={lambda { add_location(c); }}
+                                            className={"flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition-colors hover:bg-muted " + ("font-semibold text-primary bg-primary/5" if c in locations else "text-foreground")}
                                         >
                                             <span className="flex items-center gap-2">
                                                 <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
                                                 <span>{c}</span>
                                             </span>
-                                            {location == c and <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-primary" />}
+                                            {c in locations and <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-primary" />}
                                         </button>
                                     }}
                                 </div>}
@@ -399,21 +485,28 @@ def:pub UserProfilePage -> JsxElement {
                                 <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">2</span>
                                 <div className="flex flex-col">
                                     <h2 className="text-base font-semibold text-foreground">Career & Job Preferences</h2>
-                                    <p className="text-xs text-muted-foreground">Define your sector, target roles, pay expectation, and contract type</p>
+                                    <p className="text-xs text-muted-foreground">Select multiple sectors, contract types, target roles, and pay expectation</p>
                                 </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-medium text-foreground">Industry / Sector</label>
-                                <select
-                                    value={sector}
-                                    onChange={lambda (e: ChangeEvent) { sector = e.target.value; }}
-                                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                >
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-medium text-foreground">Industry / Sector (select multiple) *</label>
+                                    <span className="text-xs text-muted-foreground">{str(len(sectors)) + " selected"}</span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                                     {for sec in POPULAR_SECTORS {
-                                        <option key={sec} value={sec}>{sec}</option>
+                                        <button
+                                            key={sec}
+                                            type="button"
+                                            onClick={lambda { toggle_sector(sec); }}
+                                            className={"flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium transition-colors text-left " + ("border-primary bg-primary/10 text-primary font-semibold shadow-xs" if sec in sectors else "border-border bg-background text-foreground hover:bg-muted")}
+                                        >
+                                            <span className="truncate pr-1">{sec}</span>
+                                            {sec in sectors and <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 shrink-0 text-primary" />}
+                                        </button>
                                     }}
-                                </select>
+                                </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5">
@@ -431,7 +524,7 @@ def:pub UserProfilePage -> JsxElement {
                                             key={t}
                                             type="button"
                                             onClick={lambda { append_title(t); }}
-                                            className="rounded-full bg-muted/80 px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                                            className="rounded-full bg-muted/80 px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                                         >
                                             {"+ " + t}
                                         </button>
@@ -460,7 +553,7 @@ def:pub UserProfilePage -> JsxElement {
                                                 key={s_opt}
                                                 type="button"
                                                 onClick={lambda { salary_min = s_opt; }}
-                                                className={"rounded px-2 py-0.5 text-xs font-medium transition-colors " + ("bg-primary text-primary-foreground" if salary_min == s_opt else "bg-muted text-muted-foreground hover:bg-muted/80")}
+                                                className={"rounded px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer " + ("bg-primary text-primary-foreground" if salary_min == s_opt else "bg-muted text-muted-foreground hover:bg-muted/80")}
                                             >
                                                 {"$" + str(int(int(s_opt) / 1000)) + "k"}
                                             </button>
@@ -469,16 +562,20 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>
 
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-xs font-medium text-foreground">Contract Type</label>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-medium text-foreground">Contract Type (select multiple) *</label>
+                                        <span className="text-xs text-muted-foreground">{str(len(contract_types)) + " selected"}</span>
+                                    </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         {for ct in ["Full-time", "Part-time", "Internship", "Contract"] {
                                             <button
                                                 key={ct}
                                                 type="button"
-                                                onClick={lambda { contract_type = ct; }}
-                                                className={"flex items-center justify-center rounded-lg border py-2 text-xs font-medium transition-colors " + ("border-primary bg-primary/10 text-primary font-semibold shadow-xs" if contract_type == ct else "border-border bg-background text-foreground hover:bg-muted")}
+                                                onClick={lambda { toggle_contract_type(ct); }}
+                                                className={"flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium transition-colors cursor-pointer " + ("border-primary bg-primary/10 text-primary font-semibold shadow-xs" if ct in contract_types else "border-border bg-background text-foreground hover:bg-muted")}
                                             >
-                                                {ct}
+                                                <span>{ct}</span>
+                                                {ct in contract_types and <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 text-primary" />}
                                             </button>
                                         }}
                                     </div>
@@ -492,65 +589,53 @@ def:pub UserProfilePage -> JsxElement {
                             <div className="flex items-center gap-2.5 border-b pb-3">
                                 <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">3</span>
                                 <div className="flex flex-col">
-                                    <h2 className="text-base font-semibold text-foreground">Base Resume Upload</h2>
-                                    <p className="text-xs text-muted-foreground">Upload your PDF resume to extract skills and power compatibility scoring</p>
+                                    <h2 className="text-base font-semibold text-foreground">Resume Upload</h2>
+                                    <p className="text-xs text-muted-foreground">Upload your resume to extract skills and tailor job listings (PDF, DOCX, or TXT)</p>
                                 </div>
                             </div>
 
-                            {existing_resume_title and (not resume_title) and <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-                                <div className="flex items-center gap-3">
-                                    <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-5 text-primary" />
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-medium text-foreground">{existing_resume_title}</span>
-                                        <span className="text-xs text-muted-foreground">Currently saved base resume on file</span>
-                                    </div>
-                                </div>
-                                <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">On file</Badge>
-                            </div>}
-
-                            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-6 transition-colors hover:border-primary/50 bg-background/50 text-center">
+                            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
                                 <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} className="size-8 text-muted-foreground mb-2" />
-                                <p className="text-sm font-medium text-foreground mb-1">
-                                    {("Replace with new PDF resume" if existing_resume_title else "Upload your PDF resume")}
-                                </p>
-                                <p className="text-xs text-muted-foreground mb-4">Supported format: PDF up to 10MB</p>
-                                <label className="cursor-pointer">
-                                    <Button type="button" variant="outline" size="sm" className="pointer-events-none gap-2">
-                                        <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-4" />
-                                        <span>Browse PDF file</span>
-                                    </Button>
+                                <div className="flex flex-col gap-1">
+                                    <p className="text-sm font-medium text-foreground">
+                                        {resume_title if resume_title else ("Current resume: " + existing_resume_title if existing_resume_title else "Drag and drop or browse to upload")}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">Supported formats: PDF, DOCX, TXT up to 5MB</p>
+                                </div>
+                                <label className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors cursor-pointer">
+                                    <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-3.5 mr-1.5" />
+                                    <span>Browse PDF</span>
                                     <input
                                         type="file"
-                                        accept=".pdf,application/pdf"
+                                        accept=".pdf,.docx,.txt"
                                         onChange={handle_file}
                                         className="sr-only"
                                     />
                                 </label>
-                                {resume_title and <div className="mt-3 flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                                    <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5" />
-                                    <span>Selected: {resume_title}</span>
-                                </div>}
                             </div>
                         </CardContent>
                     </Card>
 
-                    {message and <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive font-medium">
+                    {bool(message) and <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
                         {message}
                     </div>}
 
-                    <div className="flex flex-col items-center gap-3 pt-2">
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={lambda { nav("/jobs"); }}
+                            disabled={submitting}
+                        >
+                            Skip for now
+                        </Button>
                         <Button
                             type="submit"
                             disabled={submitting}
-                            className="h-12 w-full max-w-sm rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md font-medium text-base gap-2"
+                            className="min-w-32 shadow-sm font-semibold"
                         >
-                            {submitting and <Spinner className="size-5" />}
-                            {submitting and <span>Personalizing job search...</span>}
-                            {(not submitting) and <span>{"Update Preferences & Refresh Jobs" if is_returning_user else "Confirm & Tailor Job Feed"}</span>}
+                            {("Saving Profile..." if submitting else ("Update Preferences" if is_returning_user else "Complete Onboarding →"))}
                         </Button>
-                        <p className="text-xs text-muted-foreground text-center">
-                            Your preferences and profile are used to tailor live job search results.
-                        </p>
                     </div>
                 </form>
             </div>}
