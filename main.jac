@@ -1606,9 +1606,6 @@ with entry:__main__ {
 
 # --- Web UI (Launchpad job application platform) ---
 
-import ".styles.global.css";
-import ".components.LandingPage.css";
-
 def:pub app(children: any) -> JsxElement {
     return <>{children}</>;
 }
