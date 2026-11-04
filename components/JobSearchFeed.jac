@@ -18,6 +18,7 @@ import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
+import from ..services.compatibility { get_resume_match_scores }
 import from ..services.locations { search_cities }
 import from ..lib.utils { format_salary, format_desc }
 
@@ -52,7 +53,8 @@ def:pub JobCard(
     onSelect: Callable[[], None],
     onSave: Callable[[], None],
     logo: str = "",
-    source: str = ""
+    source: str = "",
+    match_score: int = -1
 ) -> JsxElement {
     sal_display = format_salary(salary);
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
@@ -71,6 +73,7 @@ def:pub JobCard(
             </div>
             <p className="text-sm text-muted-foreground">{location}</p>
             {bool(sal_display) and <p className="text-sm font-medium tabular-nums">{sal_display}</p>}
+            {match_score >= 0 and <Badge variant={("default" if match_score >= 75 else ("secondary" if match_score >= 50 else "outline"))} className="w-fit tabular-nums">{str(match_score) + "% match"}</Badge>}
             <div className="mt-1 flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
                     {for tag in tags.split(", ")[:2] {
@@ -113,6 +116,8 @@ def:pub JobSearchFeed -> JsxElement {
     has company_filter: str = "";
     has source_filter: str = "all";
     has did_load_jobs: bool = False;
+    has match_rows: list[dict[str, any]] = [];
+    has has_resume: bool = True;
 
     async can with entry {
         if did_load_jobs {
@@ -191,6 +196,40 @@ def:pub JobSearchFeed -> JsxElement {
         jobs = init_jobs;
         tailored_jobs = init_jobs;
         loading = False;
+
+        # Score every job against the resume saved in the user's profile.
+        # This runs after the jobs are on screen, so the badges appear a
+        # moment later instead of slowing down the page.
+        match_res: any = None;
+        try {
+            match_res = await get_resume_match_scores(jobs=init_jobs, token=tok);
+        } except Exception {}
+        if match_res and match_res.get("ok") {
+            has_resume = bool(match_res.get("has_resume"));
+            if match_res.get("scores") {
+                match_rows = match_res.get("scores");
+            }
+        }
+    }
+
+    # Find the score row for one job (None if it has no score).
+    def match_for(j: dict[str, any]) -> dict[str, any] | None {
+        jid = str(j.get("id", ""));
+        for m in match_rows {
+            if str(m.get("id", "")) == jid {
+                return m;
+            }
+        }
+        return None;
+    }
+
+    # The number to show on a job card, or -1 to show no badge.
+    def card_score(j: dict[str, any]) -> int {
+        m = match_for(j);
+        if m is None {
+            return -1;
+        }
+        return int(m.get("score", 0));
     }
 
     async def open_city_dropdown(e: any = None) {
@@ -401,6 +440,7 @@ def:pub JobSearchFeed -> JsxElement {
     if sel is None and len(filtered) > 0 {
         sel = filtered[0];
     }
+    sel_match = match_for(sel) if sel is not None else None;
 
     def is_saved(j: dict[str, any]) -> bool {
         jid = str(j.get("id", ""));
@@ -450,6 +490,10 @@ def:pub JobSearchFeed -> JsxElement {
                     </Link>
                 </div>}
 
+                {(not has_resume) and <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed bg-card px-5 py-3 text-sm text-muted-foreground">
+                    <span>Upload your resume in your profile to see how well you match each job.</span>
+                    <Link to="/me" className="font-medium text-primary hover:underline text-xs">Add resume →</Link>
+                </div>}
                 {is_custom_search and <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-card px-5 py-3 text-sm text-foreground shadow-xs animate-in fade-in duration-300">
                     <div className="flex items-center gap-2">
                         <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4 text-primary shrink-0" />
@@ -696,6 +740,7 @@ def:pub JobSearchFeed -> JsxElement {
                                 tags={str(j.get("tags", ""))}
                                 logo={str(j.get("logo") or j.get("companyLogo") or j.get("company_logo") or "")}
                                 source={str(j.get("source") or j.get("site") or "")}
+                                match_score={card_score(j)}
                                 active={sel is not None and str(sel.get("id", "")) == str(j.get("id", ""))}
                                 saved={is_saved(j)}
                                 onSelect={lambda { selected_id = str(j.get("id", "")); }}
@@ -728,6 +773,11 @@ def:pub JobSearchFeed -> JsxElement {
                                     {bool(format_salary(str(sel.get("salary", "")))) and <span aria-hidden="true">·</span>}
                                     {bool(format_salary(str(sel.get("salary", "")))) and <span className="tabular-nums font-medium text-foreground">{format_salary(str(sel.get("salary", "")))}</span>}
                                 </div>
+                                {sel_match is not None and <div className="flex flex-col gap-1 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                                    <p className="font-medium">{"Your match: " + str(sel_match.get("score", 0)) + "% (" + str(sel_match.get("label", "")) + ")"}</p>
+                                    <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match.get("matched", "")) or "none")}</p>
+                                    <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match.get("missing", "")) or "none")}</p>
+                                </div>}
                                 <div className="text-sm leading-relaxed text-foreground/90 space-y-2 whitespace-pre-wrap">{str(sel.get("desc", "")).replace("<br />", "\n").replace("<br>", "\n").replace("</p>", "\n").replace("<p>", "")}</div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {

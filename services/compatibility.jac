@@ -11,6 +11,10 @@ The score is a weighted mix of three parts:
 """
 
 import re;
+import base64;
+import io;
+import from db { get_user_by_email, get_user_by_oauth_id, list_resumes_by_user }
+import from services.auth_sync { resolve_token_identity }
 
 # How much each part counts toward the final score (they add up to 1.0).
 glob SKILL_WEIGHT: float = 0.60;
@@ -275,4 +279,130 @@ def format_compatibility(result: dict[str, any], job: dict[str, any]) -> str {
         f"   Breakdown: skills {b['skills']}%, keywords {b['keywords']}%, title {b['title']}%",
     ];
     return "\n".join(lines);
+}
+
+
+# ---------- Scoring with the resume saved in the user's profile ----------
+
+"""Pull the words out of a PDF file's bytes ("" if that fails)."""
+def _pdf_text(data: bytes) -> str {
+    try {
+        # Imported here (not at the top) so this file still loads if pypdf
+        # isn't installed; only PDF reading would stop working.
+        import from pypdf { PdfReader }
+        reader = PdfReader(io.BytesIO(data));
+        pages = [str(page.extract_text() or "") for page in reader.pages];
+        return "\n".join(pages);
+    } except Exception {
+        return "";
+    }
+}
+
+"""Turn a resume saved in the database into plain text.
+
+The profile page saves the uploaded file as a "data URL", which is the
+whole file written as text, e.g. "data:application/pdf;base64,JVBERi0...".
+This undoes that and reads the words out of the PDF.
+Plain text that isn't a data URL is returned as it is.
+"""
+def resume_text_from_content(content: str | None) -> str {
+    if not content or not content.strip() {
+        return "";
+    }
+    raw = content.strip();
+    if not raw.startswith("data:") {
+        return raw;
+    }
+    if ";base64," not in raw {
+        return raw.split(",", 1)[-1];
+    }
+    data = b"";
+    try {
+        data = base64.b64decode(raw.split(";base64,", 1)[1]);
+    } except Exception {
+        return "";
+    }
+    if data.startswith(b"%PDF") {
+        return _pdf_text(data);
+    }
+    try {
+        return data.decode("utf-8");
+    } except Exception {
+        return "";
+    }
+}
+
+"""Find the logged-in user's newest resume and return its text ("" if none).
+
+The user is found the same way the profile page does it: by email, or by
+the login token the browser sends.
+"""
+def find_user_resume_text(token: str | None, email: str | None, conn: any) -> str {
+    clean_email = str(email).strip().lower() if email else "";
+    identity: dict[str, any] = resolve_token_identity(token) if token else {};
+    if not clean_email and identity.get("email") {
+        clean_email = str(identity["email"]).strip().lower();
+    }
+    user: any = None;
+    if clean_email {
+        user = get_user_by_email(clean_email, conn=conn);
+    }
+    if user is None and identity.get("user_id") {
+        user = get_user_by_oauth_id(str(identity["user_id"]), auth_provider="google", conn=conn);
+    }
+    if user is None {
+        return "";
+    }
+    # list_resumes_by_user returns the newest resume first.
+    for resume in list_resumes_by_user(int(user["id"]), conn=conn) {
+        text = resume_text_from_content(str(resume.get("content") or ""));
+        if text.strip() {
+            return text;
+        }
+    }
+    return "";
+}
+
+"""Web app endpoint: score every job against the user's saved resume.
+
+The jobs page calls this right after it loads the jobs. It returns:
+    {"ok": True, "has_resume": True,
+     "scores": [{"id": "2", "score": 95, "label": "Strong match",
+                 "matched": "python, sql, apis", "missing": ""}, ...]}
+"has_resume" is False when the user hasn't uploaded a resume yet.
+"""
+def:pub get_resume_match_scores(
+    jobs: list[dict[str, any]],
+    token: str | None = None,
+    email: str | None = None,
+    conn: any = None
+) -> dict[str, any] {
+    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
+    resume_text = "";
+    try {
+        resume_text = find_user_resume_text(token, email, actual_conn);
+    } except Exception {
+        resume_text = "";
+    }
+    if not resume_text.strip() {
+        return {"ok": True, "has_resume": False, "scores": []};
+    }
+    scores: list[dict[str, any]] = [];
+    for job in jobs {
+        try {
+            result = compute_compatibility(resume_text, job);
+        } except ValueError {
+            continue;    # a job with no title or description can't be scored
+        }
+        matched = [str(s) for s in result["matched_skills"]];
+        missing = [str(s) for s in result["missing_skills"]];
+        scores.append({
+            "id": str(job.get("id", "")),
+            "score": int(result["score"]),
+            "label": str(result["label"]),
+            "matched": ", ".join(matched),
+            "missing": ", ".join(missing),
+        });
+    }
+    return {"ok": True, "has_resume": True, "scores": scores};
 }

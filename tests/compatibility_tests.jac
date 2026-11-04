@@ -14,8 +14,14 @@ import from services.compatibility {
     compute_compatibility,
     rank_jobs,
     score_label,
-    format_compatibility
+    format_compatibility,
+    resume_text_from_content,
+    get_resume_match_scores
 }
+import base64;
+import sqlite3;
+import from db { init_db, create_user, create_resume }
+import from services.jobs { list_jobs }
 
 # Folder that holds the sample resumes and jobs used by these tests.
 glob DATA_DIR: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "compatibility");
@@ -201,4 +207,87 @@ test "format_compatibility shows score and skills" {
     assert "DevOps Engineer - Halcyon Cloud" in text;
     assert "%" in text;
     assert "Missing skills: kubernetes, terraform" in text;
+}
+
+# ---------- Scores from the resume saved in the user's profile ----------
+
+"""A fresh, empty database that only lives in memory (nothing saved to disk)."""
+def make_test_db -> any {
+    conn = sqlite3.connect(":memory:");
+    conn.execute("PRAGMA foreign_keys = ON;");
+    init_db(conn=conn);
+    return conn;
+}
+
+"""The sample PDF resume as a data URL, exactly how the profile page saves uploads."""
+def pdf_resume_data_url() -> str {
+    with open(os.path.join(DATA_DIR, "resume_backend.pdf"), "rb") as f {
+        encoded = base64.b64encode(f.read()).decode("ascii");
+    }
+    return "data:application/pdf;base64," + encoded;
+}
+
+"""Find one job's row in the scores list by its id."""
+def score_for(scores: list[dict[str, any]], job_id: str) -> dict[str, any] {
+    for row in scores {
+        if row["id"] == job_id {
+            return row;
+        }
+    }
+    raise KeyError(job_id);
+}
+
+test "resume_text_from_content reads an uploaded PDF" {
+    text = resume_text_from_content(pdf_resume_data_url());
+    assert "Jordan Lee" in text, text;
+    assert "PostgreSQL" in text;
+}
+
+test "resume_text_from_content handles plain text and empty values" {
+    assert resume_text_from_content("I know Python") == "I know Python";
+    encoded = base64.b64encode("I know SQL".encode("utf-8")).decode("ascii");
+    assert resume_text_from_content("data:text/plain;base64," + encoded) == "I know SQL";
+    assert resume_text_from_content("") == "";
+    assert resume_text_from_content(None) == "";
+}
+
+test "get_resume_match_scores uses the resume saved in the profile" {
+    conn = make_test_db();
+    user = create_user(name="Jordan Lee", email="jordan@example.com", conn=conn);
+    create_resume(user_id=int(user["id"]), title="resume.pdf", content=pdf_resume_data_url(), conn=conn);
+
+    res = get_resume_match_scores([dict(j) for j in list_jobs()], email="jordan@example.com", conn=conn);
+    assert res["ok"];
+    assert res["has_resume"];
+    assert len(res["scores"]) == 8;
+    backend = score_for(res["scores"], "2");
+    assert backend["score"] == 95, backend;
+    assert backend["label"] == "Strong match";
+    assert backend["matched"] == "python, sql, apis";
+    devops = score_for(res["scores"], "5");
+    assert devops["missing"] == "kubernetes, terraform";
+}
+
+test "get_resume_match_scores uses the newest resume" {
+    conn = make_test_db();
+    user = create_user(name="Sam Rivera", email="sam@example.com", conn=conn);
+    uid = int(user["id"]);
+    create_resume(user_id=uid, title="old.txt", content="I only know Figma.", conn=conn);
+    create_resume(user_id=uid, title="new.pdf", content=pdf_resume_data_url(), conn=conn);
+    res = get_resume_match_scores([dict(j) for j in list_jobs()], email="sam@example.com", conn=conn);
+    assert score_for(res["scores"], "2")["score"] == 95;
+}
+
+test "get_resume_match_scores reports when there is no resume" {
+    conn = make_test_db();
+    create_user(name="No Resume", email="noresume@example.com", conn=conn);
+    jobs = [dict(j) for j in list_jobs()];
+
+    no_resume = get_resume_match_scores(jobs, email="noresume@example.com", conn=conn);
+    assert no_resume["ok"];
+    assert not no_resume["has_resume"];
+    assert no_resume["scores"] == [];
+
+    unknown_user = get_resume_match_scores(jobs, email="nobody@example.com", conn=conn);
+    assert not unknown_user["has_resume"];
 }
