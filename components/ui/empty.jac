@@ -16,14 +16,15 @@ glob _emptyMediaVariants: any = cva(
 
 def:pub Empty(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
+    attrs.pop("className", None);
     return
         <div
+            {**attrs}
             data-slot="empty"
             className={cn(
-                "gap-4 rounded-lg border-dashed p-12 flex w-full min-w-0 flex-1 flex-col items-center justify-center text-center text-balance",
+                "gap-4 rounded-lg border border-dashed p-12 flex w-full min-w-0 flex-1 flex-col items-center justify-center text-center text-balance",
                 props["className"]
             )}
-            {**attrs}
         >
             {props["children"]}
         </div>;
@@ -31,14 +32,15 @@ def:pub Empty(props: any) -> JsxElement {
 
 def:pub EmptyHeader(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
+    attrs.pop("className", None);
     return
         <div
+            {**attrs}
             data-slot="empty-header"
             className={cn(
-                "gap-2 flex max-w-sm flex-col items-center",
+                "gap-2 flex w-full max-w-sm flex-col items-center justify-center text-center mx-auto",
                 props["className"]
             )}
-            {**attrs}
         >
             {props["children"]}
         </div>;
@@ -46,6 +48,7 @@ def:pub EmptyHeader(props: any) -> JsxElement {
 
 def:pub EmptyMedia(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
+    attrs.pop("className", None);
     variant = props["variant"] or "default";
     computedClass = cn(
         _emptyMediaVariants.call(
@@ -54,10 +57,10 @@ def:pub EmptyMedia(props: any) -> JsxElement {
     );
     return
         <div
+            {**attrs}
             data-slot="empty-icon"
             data-variant={variant}
             className={computedClass}
-            {**attrs}
         >
             {props["children"]}
         </div>;
@@ -65,11 +68,12 @@ def:pub EmptyMedia(props: any) -> JsxElement {
 
 def:pub EmptyTitle(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
+    attrs.pop("className", None);
     return
         <div
-            data-slot="empty-title"
-            className={cn("text-lg font-medium tracking-tight", props["className"])}
             {**attrs}
+            data-slot="empty-title"
+            className={cn("text-lg font-medium tracking-tight text-center", props["className"])}
         >
             {props["children"]}
         </div>;
@@ -77,14 +81,15 @@ def:pub EmptyTitle(props: any) -> JsxElement {
 
 def:pub EmptyDescription(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
+    attrs.pop("className", None);
     return
         <div
+            {**attrs}
             data-slot="empty-description"
             className={cn(
-                "text-sm/relaxed text-muted-foreground [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
+                "text-sm/relaxed text-muted-foreground text-center [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
                 props["className"]
             )}
-            {**attrs}
         >
             {props["children"]}
         </div>;
@@ -92,14 +97,15 @@ def:pub EmptyDescription(props: any) -> JsxElement {
 
 def:pub EmptyContent(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
+    attrs.pop("className", None);
     return
         <div
+            {**attrs}
             data-slot="empty-content"
             className={cn(
-                "gap-4 text-sm flex w-full max-w-sm min-w-0 flex-col items-center text-balance",
+                "gap-4 text-sm flex w-full max-w-sm min-w-0 flex-col items-center justify-center text-center text-balance mx-auto",
                 props["className"]
             )}
-            {**attrs}
         >
             {props["children"]}
         </div>;

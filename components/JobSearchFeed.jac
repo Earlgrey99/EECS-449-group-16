@@ -710,13 +710,13 @@ def:pub JobSearchFeed -> JsxElement {
                     </div>}
                 </form>
 
-                {len(filtered) == 0 and <Empty className="border border-dashed bg-card pt-12 pb-12">
-                    <EmptyHeader>
+                {len(filtered) == 0 and <Empty className="border border-dashed bg-card py-12 px-6 flex flex-col items-center justify-center text-center">
+                    <EmptyHeader className="flex flex-col items-center justify-center text-center">
                         <EmptyMedia variant="icon"><HugeiconsIcon icon={Search01Icon} strokeWidth={2} /></EmptyMedia>
-                        <EmptyTitle>No matching jobs</EmptyTitle>
-                        <EmptyDescription>Try adjusting your search terms, removing filters, or searching remote roles.</EmptyDescription>
+                        <EmptyTitle className="text-center">No matching jobs</EmptyTitle>
+                        <EmptyDescription className="text-center max-w-md">Try adjusting your search terms, removing filters, or searching remote roles.</EmptyDescription>
                     </EmptyHeader>
-                    <EmptyContent className="flex flex-wrap items-center justify-center gap-2">
+                    <EmptyContent className="flex flex-row flex-wrap items-center justify-center gap-2">
                         <Button variant="outline" onClick={clear_filters}>Clear filters</Button>
                         {is_custom_search and <Button onClick={reset_to_tailored}>Reset to Profile Matches</Button>}
                     </EmptyContent>
