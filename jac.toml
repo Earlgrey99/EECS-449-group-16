@@ -13,14 +13,15 @@ default_model = "deepseek/deekseek-flash"
 [placement.pins]
 "services.*" = "server"
 
-[dependencies]
+[dependencies.pypi]
+libsql = "~=0.1"
 playwright = ">=1.50,<2.0"
 pypdf = ">=5.0,<7.0"
 python-docx = ">=1.0,<2.0"
 reportlab = ">=4.0,<5.0"
-libsql = "~=0.1"
 
 [dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 [check]
@@ -63,11 +64,10 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 style = "vega"
 baseColor = "neutral"
 theme = "emerald"
-font = "figtree"
+font = "nunito"
 radius = "large"
 menuAccent = "bold"
 menuColor = "default"
-
 [dependencies.npm]
 radix-ui = "*"
 tailwind-merge = "^3.5.0"
@@ -75,6 +75,7 @@ clsx = "^2.1.1"
 tw-animate-css = "latest"
 shadcn = "latest"
 "@fontsource-variable/figtree" = "latest"
+"@fontsource-variable/nunito" = "latest"
 "@hugeicons/react" = "latest"
 "@hugeicons/core-free-icons" = "latest"
 "class-variance-authority" = "latest"
