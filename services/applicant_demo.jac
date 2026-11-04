@@ -1,4 +1,4 @@
-"""Stateless Jac RPC for the Jaccit resume prototype.
+"""Stateless Jac RPC for the Launchpad resume prototype.
 
 The user controls inputs in browser state, and the server returns only a review.
 No applicant data is persisted. The existing CLI retains its local Playwright
