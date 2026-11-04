@@ -116,6 +116,11 @@ def:pub LoginPage -> JsxElement {
                 localStorage.removeItem("dev_logged_out");
             } except Exception {}
             jacSetToken(token_val);
+            if email_val {
+                try {
+                    localStorage.setItem("user_email", str(email_val).strip().lower());
+                } except Exception {}
+            }
             synced_user = None;
             try {
                 sync_res = await sync_user_session(
@@ -168,6 +173,9 @@ def:pub LoginPage -> JsxElement {
                 localStorage.removeItem("dev_logged_out");
             } except Exception {}
             if await authorize_test_session() {
+                try {
+                    localStorage.setItem("user_email", "testuser@example.com");
+                } except Exception {}
                 busy = False;
                 nav("/jobs");
             } else {
@@ -227,6 +235,9 @@ def:pub LoginPage -> JsxElement {
             if synced_user is not None and isinstance(synced_user, dict) {
                 is_done_local = bool(synced_user.get("onboarding_completed"));
             }
+            try {
+                localStorage.setItem("user_email", email.strip().lower());
+            } except Exception {}
             if mode == "signup" or not is_done_local {
                 nav("/me");
             } else {

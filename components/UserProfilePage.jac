@@ -65,6 +65,7 @@ def:pub UserProfilePage -> JsxElement {
     has resume_title: str = "";
     has resume_content: str = "";
     has existing_resume_title: str = "";
+    has has_existing_resume: bool = False;
 
     has city_suggestions: list[str] = [];
     has city_dropdown_open: bool = False;
@@ -102,12 +103,19 @@ def:pub UserProfilePage -> JsxElement {
             try {
                 tok = str(localStorage.getItem("jac_token") or "");
             } except Exception {}
-            res = await get_user_profile_data(token=tok);
+            stored_email: str = "";
+            try {
+                stored_email = str(localStorage.getItem("user_email") or "");
+            } except Exception {}
+            res = await get_user_profile_data(email=stored_email if stored_email else None, token=tok);
             if res and res.get("ok") {
                 u = res.get("user", {});
                 email_val = str(u.get("email", "") or "");
                 if email_val and "@" in email_val {
                     email = email_val;
+                    try {
+                        localStorage.setItem("user_email", email_val);
+                    } except Exception {}
                 }
 
                 loaded_fn = str(u.get("first_name", "") or "");
@@ -177,7 +185,10 @@ def:pub UserProfilePage -> JsxElement {
                 }
                 latest_res = res.get("latest_resume");
                 if latest_res and isinstance(latest_res, dict) {
-                    existing_resume_title = str(latest_res.get("title", "Base Resume.pdf"));
+                    raw_title = latest_res.get("title");
+                    clean_title = str(raw_title).strip() if (raw_title and str(raw_title).strip() and str(raw_title).strip() != "None") else "Uploaded Resume.pdf";
+                    existing_resume_title = clean_title;
+                    has_existing_resume = True;
                 }
             }
         } except Exception {}
@@ -337,6 +348,11 @@ def:pub UserProfilePage -> JsxElement {
             );
 
             if res and res.get("ok") {
+                if email.strip() {
+                    try {
+                        localStorage.setItem("user_email", email.strip().lower());
+                    } except Exception {}
+                }
                 submitting = False;
                 nav("/jobs");
             } else {
@@ -599,11 +615,46 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
+                            {(bool(resume_title) or bool(existing_resume_title)) and <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+                                <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                            <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-5" />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-sm font-semibold text-foreground truncate max-w-[280px] sm:max-w-[360px]">
+                                                    {resume_title if resume_title else existing_resume_title}
+                                                </span>
+                                                <span className={"inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shrink-0 " + ("bg-primary/20 text-primary" if resume_title else "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400")}>
+                                                    <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3" />
+                                                    {("New file selected" if resume_title else "Uploaded & Active")}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                {("Ready to upload. Click Save below to update your profile resume." if resume_title else "Currently saved to your profile and used for job match scoring.")}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <label className="shrink-0 inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted transition-colors cursor-pointer">
+                                        <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} className="size-3.5 mr-1.5" />
+                                        <span>{("Change file" if resume_title else "Upload different file")}</span>
+                                        <input
+                                            id="resume-upload"
+                                            type="file"
+                                            accept=".pdf,.docx,.txt"
+                                            onChange={handle_file}
+                                            className="sr-only"
+                                        />
+                                    </label>
+                                </div>
+                            </div>}
+
+                            {((not resume_title) and (not existing_resume_title)) and <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
                                 <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} className="size-8 text-muted-foreground mb-2" />
                                 <div className="flex flex-col gap-1">
                                     <p className="text-sm font-medium text-foreground">
-                                        {resume_title if resume_title else ("Current resume: " + existing_resume_title if existing_resume_title else "Drag and drop or browse to upload")}
+                                        Drag and drop or browse to upload
                                     </p>
                                     <p className="text-xs text-muted-foreground">Supported formats: PDF, DOCX, TXT up to 5MB</p>
                                 </div>
@@ -618,7 +669,7 @@ def:pub UserProfilePage -> JsxElement {
                                         className="sr-only"
                                     />
                                 </label>
-                            </div>
+                            </div>}
                         </CardContent>
                     </Card>
 
