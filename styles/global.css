@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/nunito/index.css";
 
 @custom-variant dark (&:is(.dark *));
 
