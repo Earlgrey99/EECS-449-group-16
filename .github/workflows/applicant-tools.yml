@@ -50,7 +50,7 @@ jobs:
         run: .jac/venv/bin/python -m playwright install --with-deps chromium
       - name: Smoke test Wednesday demo profile and routes
         run: |
-          export TURSO_DATABASE_URL="$RUNNER_TEMP/jaccit-demo-ci.db"
+          export TURSO_DATABASE_URL="$RUNNER_TEMP/launchpad-demo-ci.db"
           jac run --dev --profile test main.jac > jac-demo.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT

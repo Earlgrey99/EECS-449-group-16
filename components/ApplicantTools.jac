@@ -93,7 +93,7 @@ def:pub ApplicantTools() -> JsxElement {
         <TopNav />
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 py-10">
             <header className="flex flex-col gap-3">
-                <p className="text-sm font-semibold text-primary">JACCIT EXPERIMENTAL WORKSPACE</p>
+                <p className="text-sm font-semibold text-primary">LAUNCHPAD EXPERIMENTAL WORKSPACE</p>
                 <h1 className="text-3xl font-semibold tracking-tight">Application tools</h1>
                 <p className="max-w-3xl text-muted-foreground">Try two local prototypes: a sample application autofill and a job-specific resume review. Neither submits a job application or modifies your original resume.</p>
                 <p className="text-sm text-amber-700">Prototype only. Profile fields exist in this page session, not in Turso. Refreshing clears them. Use sample information for testing.</p>
