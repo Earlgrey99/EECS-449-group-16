@@ -25,7 +25,8 @@ def:pub format_desc(raw_desc: str) -> str {
         return "";
     }
     low = d.lower();
-    if "<p" not in low and "<br" not in low and "<div" not in low and "\n" in d {
+    has_html_block = ("<p" in low) or ("<br" in low) or ("<div" in low) or ("<ul" in low) or ("<ol" in low) or ("<table" in low) or ("<h1" in low) or ("<h2" in low) or ("<h3" in low) or ("<h4" in low) or ("<section" in low);
+    if not has_html_block and "\n" in d {
         return d.replace("\r\n", "<br />").replace("\n", "<br />");
     }
     return d;

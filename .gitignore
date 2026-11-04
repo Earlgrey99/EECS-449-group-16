@@ -9,3 +9,4 @@ node_modules/
 profile.json
 tailored-review.*
 *.pyc
+dist/

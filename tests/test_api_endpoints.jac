@@ -450,8 +450,49 @@ test "job listing salary and description formatting and logo extraction" {
     # 2. Description formatting (HTML preservation and plain text newline handling)
     html_desc = "<p>Engineering role &nbsp; <b>Senior</b></p>";
     assert format_desc(html_desc) == html_desc;
+    html_list_desc = "<div><ul><li>Task 1</li><li>Task 2</li></ul></div>";
+    assert format_desc(html_list_desc) == html_list_desc;
     plain_desc = "Line 1\nLine 2\nLine 3";
     assert format_desc(plain_desc) == "Line 1<br />Line 2<br />Line 3";
+    plain_crlf_desc = "Line A\r\nLine B";
+    assert format_desc(plain_crlf_desc) == "Line A<br />Line B";
+
+    # USAJobs full description assembly
+    usajobs_full = normalize_usajobs_job({
+        "MatchedObjectId": "USA-FULL",
+        "MatchedObjectDescriptor": {
+            "PositionTitle": "AI Engineer",
+            "OrganizationName": "GSA",
+            "QualificationSummary": "Must have 5 years Python experience.",
+            "UserArea": {
+                "Details": {
+                    "JobSummary": "Lead federal AI projects.",
+                    "MajorDuties": ["Develop LLM systems.", "Maintain cloud APIs."],
+                    "Requirements": "US Citizenship required.",
+                    "Evaluations": "Scored based on specialized experience.",
+                    "Education": "BS in Computer Science."
+                }
+            }
+        }
+    });
+    assert "Lead federal AI projects." in usajobs_full["desc"];
+    assert "Major Duties:" in usajobs_full["desc"];
+    assert "Develop LLM systems." in usajobs_full["desc"];
+    assert "Must have 5 years Python experience." in usajobs_full["desc"];
+    assert "US Citizenship required." in usajobs_full["desc"];
+    assert "Scored based on specialized experience." in usajobs_full["desc"];
+    assert "BS in Computer Science." in usajobs_full["desc"];
+    assert usajobs_full["snippet"] == "Lead federal AI projects.";
+
+    # Jooble full description fallback and prioritization
+    jooble_with_full_desc = normalize_jooble_job({
+        "id": "J1",
+        "title": "Software Engineer",
+        "description": "<p>Full job description text from API.</p>",
+        "snippet": "Short snippet..."
+    });
+    assert jooble_with_full_desc["desc"] == "<p>Full job description text from API.</p>";
+    assert jooble_with_full_desc["snippet"] == "Short snippet...";
 
     # 3. Logo extraction across providers
     jooble_with_logo = normalize_jooble_job({"id": "1", "company_logo": "https://img.jooble.org/logo.png"});

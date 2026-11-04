@@ -3,7 +3,6 @@ import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     Search01Icon,
     Bookmark01Icon,
-    Logout01Icon,
     SparklesIcon,
     FilterHorizontalIcon,
     CheckmarkCircle02Icon,
@@ -778,7 +777,13 @@ def:pub JobSearchFeed -> JsxElement {
                                     <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match.get("matched", "")) or "none")}</p>
                                     <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match.get("missing", "")) or "none")}</p>
                                 </div>}
-                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 whitespace-pre-wrap">{str(sel.get("desc", "")).replace("<br />", "\n").replace("<br>", "\n").replace("</p>", "\n").replace("<p>", "")}</div>
+                                {str(sel.get("source", "")).lower() == "jooble" and bool(sel.get("link")) and <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                                    <span>{"Note: The Jooble search API provides an excerpt preview. Click 'View original posting' below to read the complete description on Jooble."}</span>
+                                </div>}
+                                <div
+                                    className="job-description-content text-sm leading-relaxed text-foreground/90 space-y-3"
+                                    dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "") if sel else ""))}}
+                                />
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
@@ -787,9 +792,16 @@ def:pub JobSearchFeed -> JsxElement {
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
                                     <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
-                                        <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
-                                    </Button>
+                                    {bool(sel.get("link")) and <a
+                                        href={str(sel.get("link"))}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                                    >
+                                        {"View original posting"}
+                                        <span className="ml-1 text-xs">↗</span>
+                                    </a>}
+
                                 </div>
                             </CardContent>
                         </Card>}

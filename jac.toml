@@ -52,7 +52,7 @@ client_secret = "${CLIENT_SECRET:-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}"
 [client.vite]
 plugins = [
   "tailwindcss()",
-  "({ name: 'sso-proxy', config: () => ({ server: { proxy: { '/sso': { target: 'http://localhost:8001', changeOrigin: true } } } }) })"
+  "({ name: 'sso-proxy', config: () => ({ server: { allowedHosts: ['eli-robinson.dev'], proxy: { '/sso': { target: 'http://localhost:8001', changeOrigin: true } } } }) })"
 ]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 

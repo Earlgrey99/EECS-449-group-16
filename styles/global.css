@@ -130,3 +130,51 @@
         @apply font-sans;
     }
 }
+
+.job-description-content {
+    line-height: 1.65;
+}
+.job-description-content p {
+    margin-bottom: 0.75rem;
+}
+.job-description-content p:last-child {
+    margin-bottom: 0;
+}
+.job-description-content ul {
+    list-style-type: disc;
+    margin-left: 1.25rem;
+    margin-bottom: 0.75rem;
+    padding-left: 0.25rem;
+}
+.job-description-content ol {
+    list-style-type: decimal;
+    margin-left: 1.25rem;
+    margin-bottom: 0.75rem;
+    padding-left: 0.25rem;
+}
+.job-description-content li {
+    display: list-item;
+    margin-bottom: 0.25rem;
+}
+.job-description-content strong,
+.job-description-content b {
+    font-weight: 600;
+    color: var(--foreground);
+}
+.job-description-content h1,
+.job-description-content h2,
+.job-description-content h3,
+.job-description-content h4 {
+    font-weight: 600;
+    color: var(--foreground);
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+.job-description-content a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.job-description-content a:hover {
+    opacity: 0.85;
+}
