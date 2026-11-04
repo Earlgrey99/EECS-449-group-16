@@ -144,3 +144,58 @@ test "search_jobs integrates with external fetch results" {
         assert mock_fetch.called;
     }
 }
+
+test "search_jobs supports multi-select contract types" {
+    res = search_jobs(contract_type="Contract, Internship", source="local");
+    assert res["ok"] is True;
+    assert len(res["jobs"]) > 0;
+    types = [str(j.get("type", "")).lower() for j in res["jobs"]];
+    assert "contract" in types or "internship" in types;
+    for t in types {
+        assert t in ["contract", "internship"];
+    }
+}
+
+test "search_jobs supports multi-select locations" {
+    res = search_jobs(location="Remote, Chicago, IL", source="local");
+    assert res["ok"] is True;
+    assert len(res["jobs"]) > 0;
+    locs = [str(j.get("location", "")).lower() for j in res["jobs"]];
+    for l in locs {
+        assert "remote" in l or "chicago" in l;
+    }
+}
+
+test "search_jobs supports multi-select sectors" {
+    res_health = search_jobs(sector="Healthcare & Biotech", source="local");
+    assert res_health["ok"] is True;
+    assert len(res_health["jobs"]) >= 1;
+    for j in res_health["jobs"] {
+        assert "health" in (str(j.get("company", "")) + " " + str(j.get("desc", ""))).lower();
+    }
+
+    res_multi_sec = search_jobs(sector="Healthcare & Biotech, Media & Entertainment", source="local");
+    assert res_multi_sec["ok"] is True;
+    assert len(res_multi_sec["jobs"]) >= 2;
+
+    res_finance = search_jobs(sector="Finance & Banking", source="local");
+    assert res_finance["ok"] is True;
+    assert len(res_finance["jobs"]) == 0;
+}
+
+test "search_jobs supports combined multi-select parameters" {
+    res = search_jobs(
+        location="Remote, Cleveland, OH",
+        contract_type="Full-time, Contract",
+        sector="Technology & Software",
+        source="local"
+    );
+    assert res["ok"] is True;
+    assert len(res["jobs"]) > 0;
+    for j in res["jobs"] {
+        loc_l = str(j.get("location", "")).lower();
+        assert "remote" in loc_l or "cleveland" in loc_l;
+        type_l = str(j.get("type", "")).lower();
+        assert type_l in ["full-time", "contract"];
+    }
+}

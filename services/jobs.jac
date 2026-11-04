@@ -82,6 +82,58 @@ def _matches_company(job_company: any, target_company: str) -> bool {
     return tc in jc;
 }
 
+glob SECTOR_KEYWORDS: dict[str, list[str]] = {
+    "Technology & Software": ["tech", "software", "developer", "engineer", "data", "cloud", "ai", "machine learning", "it", "web", "frontend", "backend", "full stack", "devops", "systems", "qa", "qa automation", "python", "typescript", "react", "java", "sql", "pytorch", "kubernetes", "aws", "terraform"],
+    "Finance & Banking": ["finance", "financial", "bank", "banking", "fintech", "accounting", "accountant", "invest", "investment", "trading", "wealth", "credit", "audit", "tax", "risk"],
+    "Healthcare & Biotech": ["health", "healthcare", "clinical", "care", "biotech", "medical", "hospital", "pharma", "pharmaceutical", "nurse", "doctor", "biology", "patient", "medicine"],
+    "Education & Research": ["education", "research", "university", "academic", "learning", "school", "teach", "teacher", "professor", "intern", "internship", "study", "student"],
+    "Aerospace & Defense": ["aerospace", "defense", "aviation", "military", "satellite", "space", "aircraft", "naval", "security clearance"],
+    "E-Commerce & Retail": ["commerce", "ecommerce", "retail", "store", "merchandise", "shop", "sales", "buyer", "inventory", "customer service"],
+    "Consulting & Professional Services": ["consult", "consulting", "consultant", "advisory", "professional services", "strategy", "management consulting"],
+    "Media & Entertainment": ["media", "entertainment", "game", "gaming", "music", "film", "video", "broadcast", "design", "designer", "ux", "creative", "art", "figma", "content"],
+    "Government & Non-Profit": ["government", "usajobs", "non-profit", "nonprofit", "public sector", "federal", "civic", "policy", "agency", "civil service"],
+    "Other": []
+};
+
+def _matches_sector(job: dict[str, any], target_sector: str) -> bool {
+    if not target_sector or not str(target_sector).strip() {
+        return True;
+    }
+    raw_sec = str(target_sector).strip();
+    if raw_sec.lower() in ["all", "any", "all sectors"] {
+        return True;
+    }
+    sectors = [s.strip() for s in raw_sec.split(",") if s.strip()];
+    if not sectors {
+        return True;
+    }
+    j_title = str(job.get("title", "")).lower();
+    j_comp = str(job.get("company", "")).lower();
+    j_tags = str(job.get("tags", "")).lower();
+    j_desc = str(job.get("desc", "") or job.get("snippet", "")).lower();
+    j_haystack = f"{j_title} {j_comp} {j_tags} {j_desc}";
+
+    for sec in sectors {
+        if sec == "Other" or sec.lower() == "other" {
+            return True;
+        }
+        sec_low = sec.lower();
+        sec_words = [w for w in re.split(r"[^a-zA-Z]+", sec_low) if len(w) > 3 and w not in ["and", "other"]];
+        for w in sec_words {
+            if w in j_haystack {
+                return True;
+            }
+        }
+        kw_list = SECTOR_KEYWORDS.get(sec, []);
+        for kw in kw_list {
+            if kw in j_haystack {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 # --- URL Builders ---
 
 def build_jooble_url(api_key: str, domain: str | None = None, endpoint: str | None = None) -> str {
@@ -565,6 +617,7 @@ def fetch(
     salary: int | None = None,
     contract_type: str | None = None,
     company: str | None = None,
+    sector: str | None = None,
     api_key: str | None = None,
     source: str = "jooble",
     domain: str | None = None,
@@ -615,6 +668,11 @@ def fetch(
         }
         if contract_type is not None and str(contract_type).strip() != "" {
             if not _matches_contract_type(job.get("type"), str(contract_type).strip()) {
+                continue;
+            }
+        }
+        if sector is not None and str(sector).strip() != "" {
+            if not _matches_sector(job, str(sector).strip()) {
                 continue;
             }
         }
@@ -775,13 +833,14 @@ def:pub search_jobs(
     salary: int | None = None,
     contract_type: str | None = None,
     company: str | None = None,
+    sector: str | None = None,
     source: str = "all",
     n: int = 20
 ) -> dict[str, any] {
     load_env_file();
     search_term = str(search or "").strip();
     clean_loc = str(location).strip() if (location and str(location).strip()) else None;
-    if clean_loc == "Remote" or (clean_loc and "remote" in clean_loc.lower()) {
+    if clean_loc and clean_loc.lower() == "remote" {
         clean_loc = "Remote";
     }
     clean_sal: int | None = None;
@@ -794,10 +853,11 @@ def:pub search_jobs(
     }
     ct_term = str(contract_type).strip() if (contract_type and str(contract_type).strip()) else None;
     comp_term = str(company).strip() if (company and str(company).strip()) else None;
+    sec_term = str(sector).strip() if (sector and str(sector).strip()) else None;
     src_term = str(source or "all").strip().lower();
 
     fetched_jobs: list[dict[str, any]] = [];
-    if src_term != "local" and (search_term or clean_loc or comp_term or clean_sal is not None or ct_term) {
+    if src_term != "local" and (search_term or clean_loc or comp_term or clean_sal is not None or ct_term or sec_term) {
         try {
             fetched_jobs = fetch(
                 n=n,
@@ -806,6 +866,7 @@ def:pub search_jobs(
                 salary=clean_sal,
                 contract_type=ct_term,
                 company=comp_term,
+                sector=sec_term,
                 source=src_term
             );
         } except Exception {}
@@ -822,6 +883,7 @@ def:pub search_jobs(
                 "salary": clean_sal,
                 "contract_type": ct_term or "",
                 "company": comp_term or "",
+                "sector": sec_term or "",
                 "source": src_term
             },
             "is_custom": True
@@ -870,6 +932,11 @@ def:pub search_jobs(
                 continue;
             }
         }
+        if sec_term {
+            if not _matches_sector(j, sec_term) {
+                continue;
+            }
+        }
         if clean_sal is not None {
             sal_vals = _extract_salary_values(j.get("salary"));
             if not sal_vals or max(sal_vals) < clean_sal {
@@ -889,6 +956,7 @@ def:pub search_jobs(
             "salary": clean_sal,
             "contract_type": ct_term or "",
             "company": comp_term or "",
+            "sector": sec_term or "",
             "source": src_term
         },
         "is_custom": True

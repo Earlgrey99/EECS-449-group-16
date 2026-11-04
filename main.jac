@@ -61,6 +61,7 @@ import from services.jobs {
     _extract_salary_values,
     _matches_contract_type,
     _matches_company,
+    _matches_sector,
     build_jooble_url,
     build_usajobs_url,
     build_himalayas_url,
