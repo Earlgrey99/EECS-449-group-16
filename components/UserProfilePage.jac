@@ -74,6 +74,33 @@ def:pub UserProfilePage -> JsxElement {
     has message: str = "";
     has is_returning_user: bool = False;
     has did_init_profile: bool = False;
+    has step: int = 1;
+
+    def step1_valid -> bool {
+        return bool(first_name.strip()) and bool(email.strip()) and len(locations) > 0;
+    }
+
+    def step2_valid -> bool {
+        return len(sectors) > 0 and len(contract_types) > 0;
+    }
+
+    def can_next -> bool {
+        return step1_valid() if step == 1 else step2_valid();
+    }
+
+    def go_next {
+        if can_next() and step < 3 {
+            message = "";
+            step = step + 1;
+        }
+    }
+
+    def go_back {
+        if step > 1 {
+            message = "";
+            step = step - 1;
+        }
+    }
 
     async can with entry {
         if did_init_profile {
@@ -358,24 +385,24 @@ def:pub UserProfilePage -> JsxElement {
                 <div className="flex flex-col gap-2 text-center sm:text-left">
                     <div className="inline-flex items-center gap-2 self-center sm:self-start rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
                         <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} className="size-3.5" />
-                        {("Profile Settings" if is_returning_user else "Applicant Onboarding (Step 1 of 1)")}
+                        {("Profile Settings" if is_returning_user else "Onboarding - Step " + str(step) + " of 3")}
                     </div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                         {("Update Your Job Preferences" if is_returning_user else "Let's personalize your job feed")}
                     </h1>
                     <p className="text-muted-foreground text-sm max-w-xl">
-                        {("Adjust your preferences and resume below to regenerate your tailored job query." if is_returning_user else "Tell us about yourself and your target roles to synthesize custom search parameters and personalize your job feed.")}
+                        {("Update your details and we'll refresh your job matches." if is_returning_user else "Tell us about yourself and your target roles so we can match you with positions ideal for you.")}
                     </p>
                 </div>
 
                 <form onSubmit={handle_submit} className="flex flex-col gap-6">
-                    <Card className="border border-border/80 shadow-sm !overflow-visible relative z-20 pt-1 pb-4">
+                    {step == 1 and <Card className="border border-border/80 shadow-sm not overflow-visible relative z-20 pt-1 pb-4">
                         <CardContent className="flex flex-col gap-4 pt-1.5 pb-2 px-6 !overflow-visible">
                             <div className="flex items-center gap-2.5 border-b pb-3">
                                 <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">1</span>
                                 <div className="flex flex-col">
                                     <h2 className="text-base font-semibold text-foreground">Personal Information</h2>
-                                    <p className="text-xs text-muted-foreground">Inferred from your login where available</p>
+                                    <p className="text-xs text-muted-foreground">Basic details about you</p>
                                 </div>
                             </div>
 
@@ -482,15 +509,15 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>}
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card>}
 
-                    <Card className="border border-border/80 shadow-sm overflow-visible relative z-10 pt-1 pb-4">
+                    {step == 2 and <Card className="border border-border/80 shadow-sm overflow-visible relative z-10 pt-1 pb-4">
                         <CardContent className="flex flex-col gap-4 pt-1.5 pb-2 px-6">
                             <div className="flex items-center gap-2.5 border-b pb-3">
                                 <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">2</span>
                                 <div className="flex flex-col">
                                     <h2 className="text-base font-semibold text-foreground">Career & Job Preferences</h2>
-                                    <p className="text-xs text-muted-foreground">Select multiple sectors, contract types, target roles, and pay expectation</p>
+                                    <p className="text-xs text-muted-foreground">Pick the roles, type of work, and pay you're looking for</p>
                                 </div>
                             </div>
 
@@ -587,15 +614,15 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card>}
 
-                    <Card className="border border-border/80 shadow-sm overflow-visible relative z-0 pt-1 pb-4">
+                    {step == 3 and <Card className="border border-border/80 shadow-sm overflow-visible relative z-0 pt-1 pb-4">
                         <CardContent className="flex flex-col gap-4 pt-1.5 pb-2 px-6">
                             <div className="flex items-center gap-2.5 border-b pb-3">
                                 <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">3</span>
                                 <div className="flex flex-col">
                                     <h2 className="text-base font-semibold text-foreground">Resume Upload</h2>
-                                    <p className="text-xs text-muted-foreground">Upload your resume to extract skills and tailor job listings (PDF, DOCX, or TXT)</p>
+                                    <p className="text-xs text-muted-foreground">Upload your resume so we can match you to better roles</p>
                                 </div>
                             </div>
 
@@ -620,28 +647,46 @@ def:pub UserProfilePage -> JsxElement {
                                 </label>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card>}
 
                     {bool(message) and <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
                         {message}
                     </div>}
 
-                    <div className="flex items-center justify-end gap-3 pt-2">
-                        <Button
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                        {step > 1 and <Button
                             type="button"
-                            variant="outline"
-                            onClick={lambda { nav("/jobs"); }}
+                            variant="ghost"
+                            onClick={go_back}
                             disabled={submitting}
                         >
-                            Skip for now
-                        </Button>
-                        <Button
-                            type="submit"
-                            disabled={submitting}
-                            className="min-w-32 shadow-sm font-semibold"
-                        >
-                            {("Saving Profile..." if submitting else ("Update Preferences" if is_returning_user else "Complete Onboarding →"))}
-                        </Button>
+                            Back
+                        </Button>}
+                        <div className="flex items-center gap-3">
+                            {step == 1 and <Button
+                                type="button"
+                                variant="outline"
+                                onClick={lambda { nav("/jobs"); }}
+                                disabled={submitting}
+                            >
+                                Skip for now
+                            </Button>}
+                            {step < 3 and <Button
+                                type="button"
+                                disabled={not can_next() or submitting}
+                                className="min-w-28 shadow-sm font-semibold"
+                                onClick={go_next}
+                            >
+                                Next
+                            </Button>}
+                            {step == 3 and <Button
+                                type="submit"
+                                disabled={submitting}
+                                className="min-w-32 shadow-sm font-semibold"
+                            >
+                                {("Saving Profile..." if submitting else ("Update Preferences" if is_returning_user else "Finish"))}
+                            </Button>}
+                        </div>
                     </div>
                 </form>
             </div>}
