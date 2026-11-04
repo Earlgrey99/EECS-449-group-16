@@ -1,4 +1,4 @@
-# Jaccit local applicant-tools prototype
+# Launchpad local applicant-tools prototype
 
 This branch is based on the latest main, including multi-provider job fetching,
 compatibility scoring, and lazy Turso imports. It includes the earlier CLI tools.
@@ -9,7 +9,7 @@ From the repository root on Mac (Jac 0.37.11):
 
 ```bash
 git fetch origin
-git switch feature/jaccit-web-autofill-tailoring
+git switch feature/launchpad-web-autofill-tailoring
 jac install
 jac check main.jac
 jac test -d tests -v

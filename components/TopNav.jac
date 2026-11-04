@@ -44,7 +44,7 @@ def:pub TopNav -> JsxElement {
 
     return <nav className="sticky top-0 z-30 border-b bg-background">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 pl-6 pr-6">
-            <Link to="/"><BrandMark name="Jaccit" /></Link>
+            <Link to="/"><BrandMark name="Launchpad" /></Link>
             <div className="hidden flex-1 items-center justify-end gap-2 md:flex">
                 <Link to="/"><span className={link_class("/")}>Home</span></Link>
                 <Link to="/jobs"><span className={link_class("/jobs")}>Jobs</span></Link>
