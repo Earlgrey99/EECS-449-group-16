@@ -66,6 +66,7 @@ def:pub UserProfilePage -> JsxElement {
     has resume_content: str = "";
     has existing_resume_title: str = "";
     has has_existing_resume: bool = False;
+    has reading_file: bool = False;
 
     has city_suggestions: list[str] = [];
     has city_dropdown_open: bool = False;
@@ -99,6 +100,16 @@ def:pub UserProfilePage -> JsxElement {
         city_suggestions = init_cities;
 
         try {
+            # Immediate fast load of locally saved resume title if available
+            saved_res_title = "";
+            try {
+                saved_res_title = str(localStorage.getItem("user_resume_title") or "");
+            } except Exception {}
+            if saved_res_title and saved_res_title.strip() {
+                existing_resume_title = saved_res_title.strip();
+                has_existing_resume = True;
+            }
+
             tok: str = "";
             try {
                 tok = str(localStorage.getItem("jac_token") or "");
@@ -184,11 +195,21 @@ def:pub UserProfilePage -> JsxElement {
                     is_returning_user = True;
                 }
                 latest_res = res.get("latest_resume");
-                if latest_res and isinstance(latest_res, dict) {
-                    raw_title = latest_res.get("title");
-                    clean_title = str(raw_title).strip() if (raw_title and str(raw_title).strip() and str(raw_title).strip() != "None") else "Uploaded Resume.pdf";
+                if latest_res {
+                    raw_title = "";
+                    try {
+                        raw_title = str(latest_res.get("title") or "");
+                    } except Exception {
+                        try {
+                            raw_title = str(latest_res["title"] or "");
+                        } except Exception {}
+                    }
+                    clean_title = raw_title.strip() if (raw_title and raw_title.strip() and raw_title.strip() != "None") else "Uploaded Resume.pdf";
                     existing_resume_title = clean_title;
                     has_existing_resume = True;
+                    try {
+                        localStorage.setItem("user_resume_title", clean_title);
+                    } except Exception {}
                 }
             }
         } except Exception {}
@@ -275,6 +296,7 @@ def:pub UserProfilePage -> JsxElement {
             file_obj: any = files[0];
             if file_obj {
                 resume_title = str(file_obj.name);
+                reading_file = True;
                 reader: any = None;
                 try {
                     reader = Reflect.construct(FileReader, []);
@@ -284,8 +306,51 @@ def:pub UserProfilePage -> JsxElement {
                 if reader {
                     reader.onload = lambda (load_ev: any) {
                         resume_content = str(load_ev.target.result);
+                        reading_file = False;
+                    };
+                    reader.onerror = lambda (err_ev: any) {
+                        reading_file = False;
                     };
                     reader.readAsDataURL(file_obj);
+                } else {
+                    reading_file = False;
+                }
+            }
+        }
+    }
+
+    def handle_drag_over(e: any) {
+        e.preventDefault();
+    }
+
+    def handle_drop(e: any) {
+        e.preventDefault();
+        files: any = None;
+        try {
+            files = e.dataTransfer.files;
+        } except Exception {}
+        if files and len(files) > 0 {
+            file_obj: any = files[0];
+            if file_obj {
+                resume_title = str(file_obj.name);
+                reading_file = True;
+                reader: any = None;
+                try {
+                    reader = Reflect.construct(FileReader, []);
+                } except Exception {
+                    reader = None;
+                }
+                if reader {
+                    reader.onload = lambda (load_ev: any) {
+                        resume_content = str(load_ev.target.result);
+                        reading_file = False;
+                    };
+                    reader.onerror = lambda (err_ev: any) {
+                        reading_file = False;
+                    };
+                    reader.readAsDataURL(file_obj);
+                } else {
+                    reading_file = False;
                 }
             }
         }
@@ -352,6 +417,15 @@ def:pub UserProfilePage -> JsxElement {
                     try {
                         localStorage.setItem("user_email", email.strip().lower());
                     } except Exception {}
+                }
+                if resume_title.strip() {
+                    existing_resume_title = resume_title.strip();
+                    has_existing_resume = True;
+                    try {
+                        localStorage.setItem("user_resume_title", resume_title.strip());
+                    } except Exception {}
+                    resume_title = "";
+                    resume_content = "";
                 }
                 submitting = False;
                 nav("/jobs");
@@ -440,112 +514,115 @@ def:pub UserProfilePage -> JsxElement {
                                         + Remote
                                     </button>
                                 </div>
-
-                                <div className="flex flex-wrap items-center gap-1.5 pb-1">
-                                    {for loc in locations {
-                                        <Badge key={loc} variant="secondary" className="gap-1 pl-2.5 pr-1.5 py-1 text-xs">
-                                            <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-3 text-muted-foreground" />
-                                            <span>{loc}</span>
-                                            <button
+                                <div className="flex flex-wrap gap-1.5 min-h-10 p-2 border rounded-md bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                                    {for loc_item in locations {
+                                        <Badge
+                                            key={loc_item}
+                                            variant="secondary"
+                                            className="gap-1.5 py-1 px-2.5 text-xs font-medium bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                                        >
+                                            <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-3" />
+                                            <span>{loc_item}</span>
+                                            {len(locations) > 1 and <button
                                                 type="button"
-                                                onClick={lambda { remove_location(loc); }}
-                                                className="ml-1 rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                                                aria-label={f"Remove {loc}"}
+                                                onClick={lambda { remove_location(loc_item); }}
+                                                className="ml-1 rounded-full hover:bg-primary/20 p-0.5 text-primary"
                                             >
-                                                ✕
-                                            </button>
+                                                ×
+                                            </button>}
                                         </Badge>
                                     }}
+                                    <div className="flex-1 min-w-[140px] relative">
+                                        <input
+                                            type="text"
+                                            placeholder="Type city (e.g. Seattle, Austin)..."
+                                            value={loc_search}
+                                            onChange={handle_loc_search}
+                                            onFocus={open_city_dropdown}
+                                            className="w-full bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground text-foreground h-7"
+                                        />
+                                    </div>
                                 </div>
-
-                                <div className="relative">
-                                    <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                                    <Input
-                                        placeholder="Type city name to add (e.g. Seattle, WA, Chicago, IL)..."
-                                        value={loc_search}
-                                        onChange={handle_loc_search}
-                                        onFocus={open_city_dropdown}
-                                        onClick={open_city_dropdown}
-                                        className="h-10 pl-9 bg-background"
-                                    />
-                                </div>
-                                {city_dropdown_open and <div className="absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100">
-                                    <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground border-b mb-1">
-                                        <span>Click city to add to your target locations</span>
+                                {city_dropdown_open and <div className="absolute left-0 right-0 top-full mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-lg z-50">
+                                    <div className="p-1.5 text-[11px] font-semibold text-muted-foreground flex justify-between items-center border-b border-border/50">
+                                        <span>SUGGESTED CITIES</span>
                                         <button
                                             type="button"
                                             onClick={lambda { city_dropdown_open = False; }}
-                                            className="hover:text-foreground font-semibold px-1 text-xs cursor-pointer"
+                                            className="text-xs text-muted-foreground hover:text-foreground"
                                         >
-                                            ✕ Close
+                                            Close ✕
                                         </button>
                                     </div>
-                                    {len(city_suggestions) == 0 and <div className="p-3 text-xs text-muted-foreground text-center">No matching cities found. Try typing another city or select "Remote".</div>}
-                                    {for c in city_suggestions {
-                                        <button
-                                            key={c}
-                                            type="button"
-                                            onClick={lambda { add_location(c); }}
-                                            className={"flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition-colors hover:bg-muted " + ("font-semibold text-primary bg-primary/5" if c in locations else "text-foreground")}
-                                        >
-                                            <span className="flex items-center gap-2">
+                                    <div className="flex flex-col py-1">
+                                        {for city in city_suggestions {
+                                            <button
+                                                key={city}
+                                                type="button"
+                                                onClick={lambda { add_location(city); }}
+                                                className={"flex items-center gap-2 rounded-md px-3 py-2 text-xs text-left transition-colors " + ("bg-muted text-muted-foreground cursor-not-allowed" if city in locations else "hover:bg-primary/10 hover:text-primary text-foreground")}
+                                                disabled={city in locations}
+                                            >
                                                 <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-3.5 text-muted-foreground" />
-                                                <span>{c}</span>
-                                            </span>
-                                            {c in locations and <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4 text-primary" />}
-                                        </button>
-                                    }}
+                                                <span className="flex-1 font-medium">{city}</span>
+                                                {city in locations and <span className="text-[10px] text-muted-foreground">Added</span>}
+                                            </button>
+                                        }}
+                                    </div>
                                 </div>}
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="border border-border/80 shadow-sm overflow-visible relative z-10 pt-1 pb-4">
+                    <Card className="border border-border/80 shadow-sm relative z-10 pt-1 pb-4">
                         <CardContent className="flex flex-col gap-4 pt-1.5 pb-2 px-6">
                             <div className="flex items-center gap-2.5 border-b pb-3">
                                 <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">2</span>
                                 <div className="flex flex-col">
-                                    <h2 className="text-base font-semibold text-foreground">Career & Job Preferences</h2>
-                                    <p className="text-xs text-muted-foreground">Select multiple sectors, contract types, target roles, and pay expectation</p>
+                                    <h2 className="text-base font-semibold text-foreground">Target Role & Preferences</h2>
+                                    <p className="text-xs text-muted-foreground">Used to match you with live postings</p>
                                 </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-xs font-medium text-foreground">Industry / Sector (select multiple) *</label>
-                                    <span className="text-xs text-muted-foreground">{str(len(sectors)) + " selected"}</span>
-                                </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                                <label className="text-xs font-medium text-foreground">Sectors of Interest (select multiple) *</label>
+                                <div className="flex flex-wrap gap-1.5">
                                     {for sec in POPULAR_SECTORS {
                                         <button
                                             key={sec}
                                             type="button"
                                             onClick={lambda { toggle_sector(sec); }}
-                                            className={"flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium transition-colors text-left " + ("border-primary bg-primary/10 text-primary font-semibold shadow-xs" if sec in sectors else "border-border bg-background text-foreground hover:bg-muted")}
+                                            className={"rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer border " + ("border-primary bg-primary text-primary-foreground shadow-xs" if sec in sectors else "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground")}
                                         >
-                                            <span className="truncate pr-1">{sec}</span>
-                                            {sec in sectors and <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3.5 shrink-0 text-primary" />}
+                                            {sec}
                                         </button>
                                     }}
                                 </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-medium text-foreground">Target Job Titles (comma-separated)</label>
-                                <Input
-                                    placeholder="e.g. Software Engineer, Frontend Developer, Data Analyst"
-                                    value={job_titles}
-                                    onChange={handle_job_titles}
-                                    className="h-10 bg-background"
-                                />
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-medium text-foreground">Desired Job Titles / Keywords *</label>
+                                    <span className="text-xs text-muted-foreground">Comma-separated</span>
+                                </div>
+                                <div className="relative">
+                                    <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                                    <Input
+                                        placeholder="Software Engineer, Backend Engineer, Platform"
+                                        value={job_titles}
+                                        onChange={handle_job_titles}
+                                        required
+                                        className="h-10 pl-9 bg-background"
+                                    />
+                                </div>
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                    <span className="text-xs text-muted-foreground mr-1">Suggestions:</span>
-                                    {for t in POPULAR_TITLES[:6] {
+                                    <span className="text-[11px] text-muted-foreground font-medium">Quick add:</span>
+                                    {for t in POPULAR_TITLES {
                                         <button
                                             key={t}
                                             type="button"
                                             onClick={lambda { append_title(t); }}
-                                            className="rounded-full bg-muted/80 px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
+                                            className="rounded border border-border/80 bg-background px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
                                         >
                                             {"+ " + t}
                                         </button>
@@ -626,13 +703,13 @@ def:pub UserProfilePage -> JsxElement {
                                                 <span className="text-sm font-semibold text-foreground truncate max-w-[280px] sm:max-w-[360px]">
                                                     {resume_title if resume_title else existing_resume_title}
                                                 </span>
-                                                <span className={"inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shrink-0 " + ("bg-primary/20 text-primary" if resume_title else "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400")}>
+                                                <span className={"inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shrink-0 " + ("bg-amber-500/10 text-amber-600 dark:text-amber-400" if reading_file else ("bg-primary/20 text-primary" if resume_title else "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"))}>
                                                     <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-3" />
-                                                    {("New file selected" if resume_title else "Uploaded & Active")}
+                                                    {("Reading file..." if reading_file else ("New file selected" if resume_title else "Uploaded & Active"))}
                                                 </span>
                                             </div>
                                             <p className="text-xs text-muted-foreground">
-                                                {("Ready to upload. Click Save below to update your profile resume." if resume_title else "Currently saved to your profile and used for job match scoring.")}
+                                                {("Reading file content..." if reading_file else ("Ready to upload. Click Save below to update your profile resume." if resume_title else "Currently saved to your profile and used for job match scoring."))}
                                             </p>
                                         </div>
                                     </div>
@@ -640,7 +717,7 @@ def:pub UserProfilePage -> JsxElement {
                                         <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} className="size-3.5 mr-1.5" />
                                         <span>{("Change file" if resume_title else "Upload different file")}</span>
                                         <input
-                                            id="resume-upload"
+                                            id="resume-upload-change"
                                             type="file"
                                             accept=".pdf,.docx,.txt"
                                             onChange={handle_file}
@@ -650,7 +727,11 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>
                             </div>}
 
-                            {((not resume_title) and (not existing_resume_title)) and <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
+                            {((not resume_title) and (not existing_resume_title)) and <div
+                                onDragOver={handle_drag_over}
+                                onDrop={handle_drop}
+                                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary/50 transition-colors bg-muted/20"
+                            >
                                 <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} className="size-8 text-muted-foreground mb-2" />
                                 <div className="flex flex-col gap-1">
                                     <p className="text-sm font-medium text-foreground">
@@ -662,7 +743,7 @@ def:pub UserProfilePage -> JsxElement {
                                     <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-3.5 mr-1.5" />
                                     <span>Browse PDF</span>
                                     <input
-                                        id="resume-upload"
+                                        id="resume-upload-new"
                                         type="file"
                                         accept=".pdf,.docx,.txt"
                                         onChange={handle_file}
@@ -682,16 +763,16 @@ def:pub UserProfilePage -> JsxElement {
                             type="button"
                             variant="outline"
                             onClick={lambda { nav("/jobs"); }}
-                            disabled={submitting}
+                            disabled={submitting or reading_file}
                         >
                             Skip for now
                         </Button>
                         <Button
                             type="submit"
-                            disabled={submitting}
+                            disabled={submitting or reading_file}
                             className="min-w-32 shadow-sm font-semibold"
                         >
-                            {("Saving Profile..." if submitting else ("Update Preferences" if is_returning_user else "Complete Onboarding →"))}
+                            {("Saving Profile..." if submitting else ("Reading File..." if reading_file else ("Update Preferences" if is_returning_user else "Complete Onboarding →")))}
                         </Button>
                     </div>
                 </form>
