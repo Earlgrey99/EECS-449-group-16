@@ -15,6 +15,7 @@ default_model = "deepseek/deekseek-flash"
 
 [dependencies.pypi]
 libsql = "~=0.1"
+litellm = ">=1.40"
 playwright = ">=1.50,<2.0"
 pypdf = ">=5.0,<7.0"
 python-docx = ">=1.0,<2.0"
