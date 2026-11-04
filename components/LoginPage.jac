@@ -68,6 +68,9 @@ def:pub LoginPage -> JsxElement {
                 is_dev_logged_out = logged_out_flag;
                 if not logged_out_flag {
                     if await authorize_test_session() {
+                        try {
+                            localStorage.setItem("user_email", "testuser@example.com");
+                        } except Exception {}
                         nav("/jobs");
                         return;
                     }
@@ -137,7 +140,7 @@ def:pub LoginPage -> JsxElement {
             }
             busy_google = False;
             is_done = False;
-            if synced_user is not None and isinstance(synced_user, dict) {
+            if synced_user is not None {
                 is_done = bool(synced_user.get("onboarding_completed"));
             }
             if not is_done {
@@ -232,7 +235,7 @@ def:pub LoginPage -> JsxElement {
             } except Exception {}
             busy = False;
             is_done_local = False;
-            if synced_user is not None and isinstance(synced_user, dict) {
+            if synced_user is not None {
                 is_done_local = bool(synced_user.get("onboarding_completed"));
             }
             try {

@@ -205,6 +205,9 @@ def:pub submit_profile_and_generate_query(
     user: any = get_user_by_email(clean_email, conn=actual_conn);
     if user is None and oauth_id {
         user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
+        if user is None and str(oauth_id).isdigit() {
+            user = get_user_by_id(int(oauth_id), conn=actual_conn);
+        }
     }
 
     if user is None {
@@ -261,11 +264,11 @@ def:pub submit_profile_and_generate_query(
 
     updated_user = save_user_profile(
         user_id=user_id,
-        first_name=clean_fn if clean_fn else None,
-        last_name=clean_ln if clean_ln else None,
+        first_name=clean_fn,
+        last_name=clean_ln,
         location=clean_loc,
-        sector=clean_sec if clean_sec else None,
-        job_titles=clean_titles if clean_titles else None,
+        sector=clean_sec,
+        job_titles=clean_titles,
         salary_min=salary_min,
         contract_type=clean_ct,
         cached_job_query=query_json_str,
@@ -301,6 +304,9 @@ def:pub get_user_profile_data(
     }
     if user is None and oauth_id {
         user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
+        if user is None and str(oauth_id).isdigit() {
+            user = get_user_by_id(int(oauth_id), conn=actual_conn);
+        }
     }
 
     if user is not None {
