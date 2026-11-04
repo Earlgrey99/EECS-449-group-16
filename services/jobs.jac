@@ -58,14 +58,17 @@ def _matches_contract_type(job_type: any, target_type: str) -> bool {
         return False;
     }
     jt = str(job_type).strip().lower();
-    tt = str(target_type).strip().lower();
-    if tt == jt or tt in jt {
-        return True;
-    }
+    target_str = str(target_type).strip().lower();
+    targets = [t.strip() for t in target_str.split(",") if t.strip()] if "," in target_str else [target_str];
     jt_norm = jt.replace("-", " ");
-    tt_norm = tt.replace("-", " ");
-    if tt_norm == jt_norm or tt_norm in jt_norm {
-        return True;
+    for tt in targets {
+        if tt == jt or tt in jt {
+            return True;
+        }
+        tt_norm = tt.replace("-", " ");
+        if tt_norm == jt_norm or tt_norm in jt_norm {
+            return True;
+        }
     }
     return False;
 }
@@ -77,6 +80,58 @@ def _matches_company(job_company: any, target_company: str) -> bool {
     jc = str(job_company).strip().lower();
     tc = str(target_company).strip().lower();
     return tc in jc;
+}
+
+glob SECTOR_KEYWORDS: dict[str, list[str]] = {
+    "Technology & Software": ["tech", "software", "developer", "engineer", "data", "cloud", "ai", "machine learning", "it", "web", "frontend", "backend", "full stack", "devops", "systems", "qa", "qa automation", "python", "typescript", "react", "java", "sql", "pytorch", "kubernetes", "aws", "terraform"],
+    "Finance & Banking": ["finance", "financial", "bank", "banking", "fintech", "accounting", "accountant", "invest", "investment", "trading", "wealth", "credit", "audit", "tax", "risk"],
+    "Healthcare & Biotech": ["health", "healthcare", "clinical", "care", "biotech", "medical", "hospital", "pharma", "pharmaceutical", "nurse", "doctor", "biology", "patient", "medicine"],
+    "Education & Research": ["education", "research", "university", "academic", "learning", "school", "teach", "teacher", "professor", "intern", "internship", "study", "student"],
+    "Aerospace & Defense": ["aerospace", "defense", "aviation", "military", "satellite", "space", "aircraft", "naval", "security clearance"],
+    "E-Commerce & Retail": ["commerce", "ecommerce", "retail", "store", "merchandise", "shop", "sales", "buyer", "inventory", "customer service"],
+    "Consulting & Professional Services": ["consult", "consulting", "consultant", "advisory", "professional services", "strategy", "management consulting"],
+    "Media & Entertainment": ["media", "entertainment", "game", "gaming", "music", "film", "video", "broadcast", "design", "designer", "ux", "creative", "art", "figma", "content"],
+    "Government & Non-Profit": ["government", "usajobs", "non-profit", "nonprofit", "public sector", "federal", "civic", "policy", "agency", "civil service"],
+    "Other": []
+};
+
+def _matches_sector(job: dict[str, any], target_sector: str) -> bool {
+    if not target_sector or not str(target_sector).strip() {
+        return True;
+    }
+    raw_sec = str(target_sector).strip();
+    if raw_sec.lower() in ["all", "any", "all sectors"] {
+        return True;
+    }
+    sectors = [s.strip() for s in raw_sec.split(",") if s.strip()];
+    if not sectors {
+        return True;
+    }
+    j_title = str(job.get("title", "")).lower();
+    j_comp = str(job.get("company", "")).lower();
+    j_tags = str(job.get("tags", "")).lower();
+    j_desc = str(job.get("desc", "") or job.get("snippet", "")).lower();
+    j_haystack = f"{j_title} {j_comp} {j_tags} {j_desc}";
+
+    for sec in sectors {
+        if sec == "Other" or sec.lower() == "other" {
+            return True;
+        }
+        sec_low = sec.lower();
+        sec_words = [w for w in re.split(r"[^a-zA-Z]+", sec_low) if len(w) > 3 and w not in ["and", "other"]];
+        for w in sec_words {
+            if w in j_haystack {
+                return True;
+            }
+        }
+        kw_list = SECTOR_KEYWORDS.get(sec, []);
+        for kw in kw_list {
+            if kw in j_haystack {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 # --- URL Builders ---
@@ -534,6 +589,27 @@ def fetch_themuse(
 
 # --- Unified Fetch ---
 
+
+def parse_multi_locations(loc_str: str) -> list[str] {
+    if not loc_str {
+        return [];
+    }
+    raw_parts = [p.strip() for p in loc_str.split(",") if p.strip()];
+    locs: list[str] = [];
+    idx = 0;
+    while idx < len(raw_parts) {
+        part = raw_parts[idx];
+        if idx + 1 < len(raw_parts) and len(raw_parts[idx + 1]) == 2 and raw_parts[idx + 1].isalpha() {
+            locs.append(f"{part}, {raw_parts[idx + 1]}");
+            idx = idx + 2;
+        } else {
+            locs.append(part);
+            idx = idx + 1;
+        }
+    }
+    return locs;
+}
+
 def fetch(
     n: int,
     search: str,
@@ -541,6 +617,7 @@ def fetch(
     salary: int | None = None,
     contract_type: str | None = None,
     company: str | None = None,
+    sector: str | None = None,
     api_key: str | None = None,
     source: str = "jooble",
     domain: str | None = None,
@@ -594,6 +671,11 @@ def fetch(
                 continue;
             }
         }
+        if sector is not None and str(sector).strip() != "" {
+            if not _matches_sector(job, str(sector).strip()) {
+                continue;
+            }
+        }
         if salary is not None {
             sal_vals = _extract_salary_values(job.get("salary"));
             if not sal_vals or max(sal_vals) < int(salary) {
@@ -601,12 +683,25 @@ def fetch(
             }
         }
         if location is not None and str(location).strip() != "" {
-            loc_target = str(location).strip().lower();
+            loc_target_str = str(location).strip().lower();
+            targets = [t.lower() for t in parse_multi_locations(loc_target_str)] if parse_multi_locations(loc_target_str) else [loc_target_str];
             job_loc = str(job.get("location", "")).lower();
-            if job_loc and loc_target not in job_loc and "remote" not in loc_target {
-                if job_loc not in loc_target {
-                    continue;
+            matched_any_loc = False;
+            for loc_target in targets {
+                if "remote" in loc_target {
+                    if "remote" in job_loc {
+                        matched_any_loc = True;
+                        break;
+                    }
+                } else {
+                    if job_loc and (loc_target in job_loc or job_loc in loc_target) {
+                        matched_any_loc = True;
+                        break;
+                    }
                 }
+            }
+            if not matched_any_loc {
+                continue;
             }
         }
         if search and src in ["themuse", "all"] {
@@ -729,5 +824,141 @@ def:pub get_user_tailored_jobs(
         "query": None,
         "tailored": False,
         "onboarding_completed": bool(user.get("onboarding_completed")) if user else False
+    };
+}
+
+def:pub search_jobs(
+    search: str = "",
+    location: str | None = None,
+    salary: int | None = None,
+    contract_type: str | None = None,
+    company: str | None = None,
+    sector: str | None = None,
+    source: str = "all",
+    n: int = 20
+) -> dict[str, any] {
+    load_env_file();
+    search_term = str(search or "").strip();
+    clean_loc = str(location).strip() if (location and str(location).strip()) else None;
+    if clean_loc and clean_loc.lower() == "remote" {
+        clean_loc = "Remote";
+    }
+    clean_sal: int | None = None;
+    if salary is not None {
+        try {
+            clean_sal = int(salary);
+        } except (ValueError, TypeError) {
+            clean_sal = None;
+        }
+    }
+    ct_term = str(contract_type).strip() if (contract_type and str(contract_type).strip()) else None;
+    comp_term = str(company).strip() if (company and str(company).strip()) else None;
+    sec_term = str(sector).strip() if (sector and str(sector).strip()) else None;
+    src_term = str(source or "all").strip().lower();
+
+    fetched_jobs: list[dict[str, any]] = [];
+    if src_term != "local" and (search_term or clean_loc or comp_term or clean_sal is not None or ct_term or sec_term) {
+        try {
+            fetched_jobs = fetch(
+                n=n,
+                search=search_term or "Software",
+                location=clean_loc,
+                salary=clean_sal,
+                contract_type=ct_term,
+                company=comp_term,
+                sector=sec_term,
+                source=src_term
+            );
+        } except Exception {}
+    }
+
+    if fetched_jobs {
+        return {
+            "ok": True,
+            "jobs": fetched_jobs,
+            "count": len(fetched_jobs),
+            "query": {
+                "search": search_term,
+                "location": clean_loc or "",
+                "salary": clean_sal,
+                "contract_type": ct_term or "",
+                "company": comp_term or "",
+                "sector": sec_term or "",
+                "source": src_term
+            },
+            "is_custom": True
+        };
+    }
+
+    fallback_jobs: list[dict[str, any]] = [];
+    for j in JOBS {
+        if search_term {
+            s_low = search_term.lower();
+            j_text = f"{j.get('title', '')} {j.get('company', '')} {j.get('desc', '')} {j.get('tags', '')}".lower();
+            words = [w for w in s_low.split() if len(w) > 2];
+            if words and not any([w in j_text for w in words]) {
+                continue;
+            }
+        }
+        if clean_loc {
+            clean_loc_low = clean_loc.lower();
+            targets = [t.lower() for t in parse_multi_locations(clean_loc_low)] if parse_multi_locations(clean_loc_low) else [clean_loc_low];
+            j_loc_str = str(j.get("location", "")).lower();
+            matched_loc = False;
+            for t in targets {
+                if "remote" in t {
+                    if "remote" in j_loc_str {
+                        matched_loc = True;
+                        break;
+                    }
+                } else {
+                    if t in j_loc_str or j_loc_str in t {
+                        matched_loc = True;
+                        break;
+                    }
+                }
+            }
+            if not matched_loc {
+                continue;
+            }
+        }
+        if comp_term {
+            if not _matches_company(j.get("company"), comp_term) {
+                continue;
+            }
+        }
+        if ct_term {
+            if not _matches_contract_type(j.get("type"), ct_term) {
+                continue;
+            }
+        }
+        if sec_term {
+            if not _matches_sector(j, sec_term) {
+                continue;
+            }
+        }
+        if clean_sal is not None {
+            sal_vals = _extract_salary_values(j.get("salary"));
+            if not sal_vals or max(sal_vals) < clean_sal {
+                continue;
+            }
+        }
+        fallback_jobs.append(dict(j));
+    }
+
+    return {
+        "ok": True,
+        "jobs": fallback_jobs[:n],
+        "count": len(fallback_jobs[:n]),
+        "query": {
+            "search": search_term,
+            "location": clean_loc or "",
+            "salary": clean_sal,
+            "contract_type": ct_term or "",
+            "company": comp_term or "",
+            "sector": sec_term or "",
+            "source": src_term
+        },
+        "is_custom": True
     };
 }

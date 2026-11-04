@@ -61,6 +61,7 @@ import from services.jobs {
     _extract_salary_values,
     _matches_contract_type,
     _matches_company,
+    _matches_sector,
     build_jooble_url,
     build_usajobs_url,
     build_himalayas_url,
@@ -75,7 +76,8 @@ import from services.jobs {
     fetch_themuse,
     fetch,
     list_jobs,
-    get_user_tailored_jobs
+    get_user_tailored_jobs,
+    search_jobs
 }
 import from services.profile_llm {
     submit_profile_and_generate_query,
