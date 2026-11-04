@@ -236,6 +236,13 @@ def:pub submit_profile_and_generate_query(
                 conn=actual_conn
             );
         } except Exception {}
+    } elif user_id {
+        try {
+            existing_resumes = list_resumes_by_user(user_id, conn=actual_conn);
+            if existing_resumes and existing_resumes[0].get("content") {
+                resume_summary = extract_resume_text(existing_resumes[0]["content"]);
+            }
+        } except Exception {}
     }
 
     profile_data = {
@@ -306,6 +313,16 @@ def:pub get_user_profile_data(
 
         resumes = list_resumes_by_user(user_id, conn=actual_conn);
         latest_resume = resumes[0] if resumes else None;
+        sanitized_resume = None;
+        if latest_resume {
+            sanitized_resume = dict(latest_resume);
+            raw_title = sanitized_resume.get("title");
+            if not raw_title or str(raw_title).strip() == "" or str(raw_title).strip() == "None" {
+                sanitized_resume["title"] = "Uploaded Resume.pdf";
+            } else {
+                sanitized_resume["title"] = str(raw_title).strip();
+            }
+        }
 
         cached_query_dict = None;
         if user.get("cached_job_query") {
@@ -320,7 +337,7 @@ def:pub get_user_profile_data(
         return {
             "ok": True,
             "user": sanitized_user,
-            "latest_resume": latest_resume,
+            "latest_resume": sanitized_resume,
             "cached_query": cached_query_dict,
             "onboarding_completed": bool(user.get("onboarding_completed"))
         };

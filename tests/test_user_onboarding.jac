@@ -337,3 +337,51 @@ test "get_user_tailored_jobs matches listings with multi-select contract types a
     assert tailored["ok"] is True;
     assert len(tailored["jobs"]) > 0;
 }
+
+test "get_user_profile_data retains uploaded resume information on refresh and update" {
+    conn = make_test_db();
+    email = "resume_refresh_user@example.com";
+    register_user(name="Resume User", email=email, password="password123", conn=conn);
+
+    # Submit profile with uploaded resume
+    submit_profile_and_generate_query(
+        email=email,
+        first_name="Resume",
+        last_name="User",
+        location="Remote",
+        sector="Technology & Software",
+        job_titles="Software Engineer",
+        salary_min=100000,
+        contract_type="Full-time",
+        resume_title="My_Resume_2026.pdf",
+        resume_content="data:text/plain;base64,U2tpbGxzOiBQeXRob24sIFJlYWN0LCBTUUw=",
+        conn=conn
+    );
+
+    # Profile fetch on refresh
+    prof_data = get_user_profile_data(email=email, conn=conn);
+    assert prof_data["ok"] is True;
+    assert prof_data["latest_resume"] is not None;
+    assert prof_data["latest_resume"]["title"] == "My_Resume_2026.pdf";
+
+    # Re-save profile without uploading a new file (e.g. updating location only)
+    submit_profile_and_generate_query(
+        email=email,
+        first_name="Resume",
+        last_name="User",
+        location="Remote, Seattle, WA",
+        sector="Technology & Software",
+        job_titles="Software Engineer",
+        salary_min=105000,
+        contract_type="Full-time",
+        resume_title=None,
+        resume_content=None,
+        conn=conn
+    );
+
+    # Verify resume is still retained on subsequent fetch
+    prof_data_after = get_user_profile_data(email=email, conn=conn);
+    assert prof_data_after["ok"] is True;
+    assert prof_data_after["latest_resume"] is not None;
+    assert prof_data_after["latest_resume"]["title"] == "My_Resume_2026.pdf";
+}
