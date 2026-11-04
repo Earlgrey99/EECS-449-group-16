@@ -100,8 +100,8 @@ def:pub JobSearchFeed -> JsxElement {
     has tailored_query: str = "";
     has tailored_loc_query: str = "";
     has tailored_locations: list[str] = [];
-    has selected_id: int = 0;
-    has saved_ids: list[int] = [];
+    has selected_id: str = "";
+    has saved_ids: list[str] = [];
     has is_tailored: bool = False;
     has tailored_summary: str = "";
     has is_custom_search: bool = False;
@@ -112,8 +112,13 @@ def:pub JobSearchFeed -> JsxElement {
     has sectors_filter: list[str] = [];
     has company_filter: str = "";
     has source_filter: str = "all";
+    has did_load_jobs: bool = False;
 
     async can with entry {
+        if did_load_jobs {
+            return;
+        }
+        did_load_jobs = True;
         tok: str = "";
         try {
             tok = str(localStorage.getItem("jac_token") or "");
@@ -320,9 +325,9 @@ def:pub JobSearchFeed -> JsxElement {
         custom_summary = " · ".join(parts) if parts else "Custom criteria";
 
         if len(jobs) > 0 {
-            selected_id = int(jobs[0].get("id", 0));
+            selected_id = str(jobs[0].get("id", ""));
         } else {
-            selected_id = 0;
+            selected_id = "";
         }
         searching = False;
     }
@@ -341,7 +346,7 @@ def:pub JobSearchFeed -> JsxElement {
         locations_filter = list(tailored_locations) if tailored_locations else (["Remote"] if tailored_loc_query else []);
         city_dropdown_open = False;
         if len(tailored_jobs) > 0 {
-            selected_id = int(tailored_jobs[0].get("id", 0));
+            selected_id = str(tailored_jobs[0].get("id", ""));
         }
     }
 
@@ -389,7 +394,7 @@ def:pub JobSearchFeed -> JsxElement {
     filtered = [j for j in jobs if matches(j)];
     sel: dict[str, any] | None = None;
     for j in filtered {
-        if int(j.get("id", 0)) == selected_id {
+        if str(j.get("id", "")) == str(selected_id) {
             sel = j;
         }
     }
@@ -398,7 +403,7 @@ def:pub JobSearchFeed -> JsxElement {
     }
 
     def is_saved(j: dict[str, any]) -> bool {
-        jid = int(j.get("id", 0));
+        jid = str(j.get("id", ""));
         for sid in saved_ids {
             if sid == jid {
                 return True;
@@ -408,7 +413,7 @@ def:pub JobSearchFeed -> JsxElement {
     }
 
     def toggle_save(j: dict[str, any]) {
-        jid = int(j.get("id", 0));
+        jid = str(j.get("id", ""));
         if is_saved(j) {
             saved_ids = [sid for sid in saved_ids if sid != jid];
         } else {
@@ -691,9 +696,9 @@ def:pub JobSearchFeed -> JsxElement {
                                 tags={str(j.get("tags", ""))}
                                 logo={str(j.get("logo") or j.get("companyLogo") or j.get("company_logo") or "")}
                                 source={str(j.get("source") or j.get("site") or "")}
-                                active={sel is not None and int(sel.get("id", 0)) == int(j.get("id", 0))}
+                                active={sel is not None and str(sel.get("id", "")) == str(j.get("id", ""))}
                                 saved={is_saved(j)}
-                                onSelect={lambda { selected_id = int(j.get("id", 0)); }}
+                                onSelect={lambda { selected_id = str(j.get("id", "")); }}
                                 onSave={lambda { toggle_save(j); }}
                             />
                         }}
@@ -723,7 +728,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     {bool(format_salary(str(sel.get("salary", "")))) and <span aria-hidden="true">·</span>}
                                     {bool(format_salary(str(sel.get("salary", "")))) and <span className="tabular-nums font-medium text-foreground">{format_salary(str(sel.get("salary", "")))}</span>}
                                 </div>
-                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
+                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 whitespace-pre-wrap">{str(sel.get("desc", "")).replace("<br />", "\n").replace("<br>", "\n").replace("</p>", "\n").replace("<p>", "")}</div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>

@@ -73,8 +73,13 @@ def:pub UserProfilePage -> JsxElement {
     has submitting: bool = False;
     has message: str = "";
     has is_returning_user: bool = False;
+    has did_init_profile: bool = False;
 
     async can with entry {
+        if did_init_profile {
+            return;
+        }
+        did_init_profile = True;
         if not jacIsLoggedIn() {
             nav("/login");
             return;
@@ -606,6 +611,7 @@ def:pub UserProfilePage -> JsxElement {
                                     <HugeiconsIcon icon={File01Icon} strokeWidth={2} className="size-3.5 mr-1.5" />
                                     <span>Browse PDF</span>
                                     <input
+                                        id="resume-upload"
                                         type="file"
                                         accept=".pdf,.docx,.txt"
                                         onChange={handle_file}

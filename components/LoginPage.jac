@@ -37,9 +37,27 @@ def:pub LoginPage -> JsxElement {
     has busy_google: bool = False;
     has keep_signed_in: bool = False;
     has is_dev_logged_out: bool = False;
+    has last_processed_login_query: str = "__first__";
+
+    # The app DB's test user is separate from Jac's built-in auth users.
+    # Provision both, but only use jacLogin's JWT for the browser session.
+    async def authorize_test_session() -> bool {
+        session = await get_test_user_session();
+        if not session or not session.get("ok") {
+            return False;
+        }
+        try {
+            await jacSignup("testuser@example.com", "testpassword123");
+        } except Exception {}
+        return bool(await jacLogin("testuser@example.com", "testpassword123"));
+    }
 
     async can with entry {
         search = loc.search or "";
+        if search == last_processed_login_query {
+            return;
+        }
+        last_processed_login_query = search;
         if not search {
             if jacIsLoggedIn() {
                 nav("/jobs");
@@ -49,9 +67,7 @@ def:pub LoginPage -> JsxElement {
                 logged_out_flag = (localStorage.getItem("dev_logged_out") == "true");
                 is_dev_logged_out = logged_out_flag;
                 if not logged_out_flag {
-                    session = await get_test_user_session();
-                    if session and session.get("ok") and session.get("token") {
-                        jacSetToken(session["token"]);
+                    if await authorize_test_session() {
                         nav("/jobs");
                         return;
                     }
@@ -151,14 +167,11 @@ def:pub LoginPage -> JsxElement {
             try {
                 localStorage.removeItem("dev_logged_out");
             } except Exception {}
-            session = await get_test_user_session();
-            if session and session.get("ok") and session.get("token") {
-                jacSetToken(session["token"]);
+            if await authorize_test_session() {
                 busy = False;
                 nav("/jobs");
             } else {
-                err_msg = str(session.get("error") if session else "Auto-login failed.");
-                message = err_msg;
+                message = "Development sign-in was unavailable. Check test profile and database settings.";
                 busy = False;
             }
         } except Exception as e {
