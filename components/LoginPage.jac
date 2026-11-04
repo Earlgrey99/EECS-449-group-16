@@ -247,12 +247,12 @@ def:pub LoginPage -> JsxElement {
             </div>}
             <form onSubmit={handle_submit} className="flex w-full max-w-md flex-col gap-4 rounded-2xl bg-primary p-8 text-primary-foreground shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-500">
                 {mode == "signin" and <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>}
-                <p className="text-sm text-primary-foreground/75">
+                {mode == "signin" and <p className="text-sm text-primary-foreground/75">
                     {"New? "}
-                    <button type="button" onClick={lambda { mode = "signup" if mode == "signin" else "signin"; message = ""; }} className="font-medium text-primary-foreground underline underline-offset-4">
-                        {"Sign up here." if mode == "signin" else "Sign in here."}
+                    <button type="button" onClick={lambda { mode = "signup"; message = ""; }} className="font-medium text-primary-foreground underline underline-offset-4">
+                        Sign up here.
                     </button>
-                </p>
+                </p>}
                 <Button
                     type="button"
                     variant="outline"
