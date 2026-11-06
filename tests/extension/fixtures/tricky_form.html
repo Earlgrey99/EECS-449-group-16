@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tricky application form</title>
+  </head>
+  <body>
+    <h1>Software Engineer application</h1>
+    <form id="application">
+      <label for="first">First Name *</label>
+      <input id="first" name="job_application[first_name]" />
+
+      <label>Last Name <input name="job_application[last_name]" /></label>
+
+      <input aria-label="Email address" name="field_17" />
+
+      <label for="phone">Phone</label>
+      <input id="phone" name="phone" type="tel" />
+
+      <label for="linkedin">LinkedIn Profile</label>
+      <input id="linkedin" name="urls[LinkedIn]" />
+
+      <!-- Behaves like a React controlled input. See the script below. -->
+      <label for="controlled">GitHub</label>
+      <input id="controlled" name="github" />
+      <output id="controlled-state"></output>
+
+      <label for="city">City</label>
+      <select id="city" name="city">
+        <option value="">Select</option>
+        <option value="det">Detroit</option>
+        <option value="ann">Ann Arbor</option>
+      </select>
+
+      <label for="resume">Resume/CV</label>
+      <input id="resume" name="resume" type="file" />
+
+      <label for="existing">Portfolio</label>
+      <input id="existing" name="portfolio" value="https://already-here.example" />
+
+      <!-- These must stay empty. -->
+      <label for="company">Company name</label>
+      <input id="company" name="name" />
+
+      <label for="emergency">Emergency contact phone</label>
+      <input id="emergency" name="emergency_phone" type="tel" />
+
+      <label for="reference">Reference email</label>
+      <input id="reference" name="reference_email" type="email" />
+
+      <label for="cover">Cover letter</label>
+      <input id="cover" name="cover_letter" type="file" />
+
+      <label for="gender">Gender</label>
+      <select id="gender" name="gender">
+        <option value="">Select</option>
+        <option>Prefer not to say</option>
+      </select>
+
+      <label for="visa">Will you require visa sponsorship?</label>
+      <input id="visa" name="q1" />
+
+      <label for="salary">Salary expectations</label>
+      <input id="salary" name="q2" />
+
+      <label for="why">Why do you want this job?</label>
+      <textarea id="why" name="q3"></textarea>
+
+      <input id="hidden-email" type="hidden" name="email" />
+      <input id="invisible-email" name="email" style="display: none" />
+      <input id="readonly-email" name="email" readonly />
+      <input id="password" name="password" type="password" />
+
+      <button type="submit">Submit application</button>
+    </form>
+
+    <script>
+      window.__submitted = false;
+      window.__clicked = false;
+      const form = document.getElementById("application");
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.__submitted = true;
+      });
+      form.querySelector("button").addEventListener("click", () => {
+        window.__clicked = true;
+      });
+
+      // React tracks each input's value on the element itself and ignores an input
+      // event if the value matches what it last saw. This does the same.
+      const input = document.getElementById("controlled");
+      const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      let tracked = "";
+      Object.defineProperty(input, "value", {
+        configurable: true,
+        get() {
+          return proto.get.call(this);
+        },
+        set(next) {
+          tracked = next;
+          proto.set.call(this, next);
+        },
+      });
+      input.addEventListener("input", () => {
+        const current = proto.get.call(input);
+        if (current !== tracked) {
+          tracked = current;
+          document.getElementById("controlled-state").textContent = current;
+        }
+      });
+    </script>
+  </body>
+</html>
