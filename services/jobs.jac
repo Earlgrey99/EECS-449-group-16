@@ -7,8 +7,8 @@ import re;
 import urllib.error;
 import urllib.parse;
 import urllib.request;
-import from db { load_env_file, get_user_by_email, get_user_by_oauth_id }
-import from .auth_sync { resolve_token_identity }
+import from db { load_env_file, get_user_by_email }
+import from .auth_sync { _resolve_caller }
 
 glob JOBS: list[dict[str, str | int]] = [
     {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local", "logo": ""},
@@ -717,20 +717,17 @@ def fetch(
     return filtered_jobs[:n];
 }
 
-def:pub get_user_tailored_jobs(
-    email: str | None = None,
-    token: str | None = None,
-    conn: any = None
-) -> dict[str, any] {
-    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
-    clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
-    resolved_info = resolve_token_identity(token) if token else {};
-
-    if not clean_email and resolved_info.get("email") {
-        clean_email = str(resolved_info["email"]).strip().lower();
+def:protect get_user_tailored_jobs(token: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
     }
+    return _tailored_jobs_for(caller["email"]);
+}
 
-    oauth_id = resolved_info.get("user_id");
+def _tailored_jobs_for(email: str, conn: any = None) -> dict[str, any] {
+    actual_conn = conn;
+    clean_email = str(email).strip().lower();
 
     user: any = None;
     if clean_email {
@@ -738,12 +735,7 @@ def:pub get_user_tailored_jobs(
             user = get_user_by_email(clean_email, conn=actual_conn);
         } except Exception {}
     }
-    if user is None and oauth_id {
-        try {
-            user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
-        } except Exception {}
-    }
-    
+
     if user and user.get("cached_job_query") {
         query_dict: dict[str, any] = {};
         try {

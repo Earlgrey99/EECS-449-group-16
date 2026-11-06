@@ -6,7 +6,7 @@ import json;
 import os;
 import urllib.request;
 import from unittest.mock { MagicMock, patch }
-import from main { build_parser, main }
+import from cli { build_parser, main }
 import from services.jobs {
     build_jooble_url,
     build_usajobs_url,

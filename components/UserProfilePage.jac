@@ -77,7 +77,7 @@ def:pub UserProfilePage -> JsxElement {
     has step: int = 1;
 
     def step1_valid -> bool {
-        return bool(first_name.strip()) and bool(email.strip()) and len(locations) > 0;
+        return bool(first_name.strip()) and len(locations) > 0;
     }
 
     def step2_valid -> bool {
@@ -203,7 +203,7 @@ def:pub UserProfilePage -> JsxElement {
                     is_returning_user = True;
                 }
                 latest_res = res.get("latest_resume");
-                if latest_res and isinstance(latest_res, dict) {
+                if latest_res {
                     existing_resume_title = str(latest_res.get("title", "Base Resume.pdf"));
                 }
             }
@@ -213,7 +213,6 @@ def:pub UserProfilePage -> JsxElement {
 
     def handle_first_name(e: ChangeEvent) { first_name = e.target.value; }
     def handle_last_name(e: ChangeEvent) { last_name = e.target.value; }
-    def handle_email(e: ChangeEvent) { email = e.target.value; }
     def handle_job_titles(e: ChangeEvent) { job_titles = e.target.value; }
     def handle_salary(e: ChangeEvent) { salary_min = e.target.value; }
 
@@ -315,10 +314,6 @@ def:pub UserProfilePage -> JsxElement {
             message = "Please enter your first name.";
             return;
         }
-        if not email.strip() {
-            message = "Please enter your email.";
-            return;
-        }
         if len(locations) == 0 {
             locations = ["Remote"];
         }
@@ -350,7 +345,7 @@ def:pub UserProfilePage -> JsxElement {
 
         try {
             res = await submit_profile_and_generate_query(
-                email=email.strip(),
+                token=tok,
                 first_name=first_name.strip(),
                 last_name=last_name.strip(),
                 location=loc_str,
@@ -359,8 +354,7 @@ def:pub UserProfilePage -> JsxElement {
                 salary_min=sal_int,
                 contract_type=ct_str,
                 resume_title=resume_title.strip() if resume_title else None,
-                resume_content=resume_content if resume_content else None,
-                token=tok
+                resume_content=resume_content if resume_content else None
             );
 
             if res and res.get("ok") {
@@ -429,14 +423,14 @@ def:pub UserProfilePage -> JsxElement {
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-medium text-foreground">Email Address *</label>
+                                <label className="text-xs font-medium text-foreground">Email Address (from your account)</label>
                                 <Input
                                     type="email"
                                     placeholder="ada@example.com"
                                     value={email}
-                                    onChange={handle_email}
-                                    required
-                                    className="h-10 bg-background"
+                                    readOnly={True}
+                                    aria-readonly="true"
+                                    className="h-10 bg-muted text-muted-foreground"
                                 />
                             </div>
 

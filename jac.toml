@@ -38,8 +38,9 @@ project_id = "prj_bf9c70c000554c7c849fc474521eea84"
 [serve]
 base_route_app = "app"
 
+# The JWT signing key comes from JAC_SERVE_AUTH_SECRET. Without it, a dev server
+# mints a private per-project key in .jac/data/. Never commit a key here.
 [serve.auth]
-secret = "eecs449-group16-dev-secret-key-32chars"
 algorithm = "HS256"
 token_ttl_days = 7
 

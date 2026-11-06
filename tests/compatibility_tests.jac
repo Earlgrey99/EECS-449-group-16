@@ -16,7 +16,7 @@ import from services.compatibility {
     score_label,
     format_compatibility,
     resume_text_from_content,
-    get_resume_match_scores
+    _match_scores_for
 }
 import base64;
 import sqlite3;
@@ -256,7 +256,7 @@ test "get_resume_match_scores uses the resume saved in the profile" {
     user = create_user(name="Jordan Lee", email="jordan@example.com", conn=conn);
     create_resume(user_id=int(user["id"]), title="resume.pdf", content=pdf_resume_data_url(), conn=conn);
 
-    res = get_resume_match_scores([dict(j) for j in list_jobs()], email="jordan@example.com", conn=conn);
+    res = _match_scores_for([dict(j) for j in list_jobs()], "jordan@example.com", conn=conn);
     assert res["ok"];
     assert res["has_resume"];
     assert len(res["scores"]) == 8;
@@ -274,7 +274,7 @@ test "get_resume_match_scores uses the newest resume" {
     uid = int(user["id"]);
     create_resume(user_id=uid, title="old.txt", content="I only know Figma.", conn=conn);
     create_resume(user_id=uid, title="new.pdf", content=pdf_resume_data_url(), conn=conn);
-    res = get_resume_match_scores([dict(j) for j in list_jobs()], email="sam@example.com", conn=conn);
+    res = _match_scores_for([dict(j) for j in list_jobs()], "sam@example.com", conn=conn);
     assert score_for(res["scores"], "2")["score"] == 95;
 }
 
@@ -283,11 +283,11 @@ test "get_resume_match_scores reports when there is no resume" {
     create_user(name="No Resume", email="noresume@example.com", conn=conn);
     jobs = [dict(j) for j in list_jobs()];
 
-    no_resume = get_resume_match_scores(jobs, email="noresume@example.com", conn=conn);
+    no_resume = _match_scores_for(jobs, "noresume@example.com", conn=conn);
     assert no_resume["ok"];
     assert not no_resume["has_resume"];
     assert no_resume["scores"] == [];
 
-    unknown_user = get_resume_match_scores(jobs, email="nobody@example.com", conn=conn);
+    unknown_user = _match_scores_for(jobs, "nobody@example.com", conn=conn);
     assert not unknown_user["has_resume"];
 }
