@@ -54,6 +54,7 @@ def:pub UserProfilePage -> JsxElement {
     nav = useNavigate();
 
     has email: str = "";
+    has email_locked: bool = False;
     has first_name: str = "";
     has last_name: str = "";
     has locations: list[str] = ["Remote"];
@@ -135,6 +136,7 @@ def:pub UserProfilePage -> JsxElement {
                 email_val = str(u.get("email", "") or "");
                 if email_val and "@" in email_val {
                     email = email_val;
+                    email_locked = True;
                 }
 
                 loaded_fn = str(u.get("first_name", "") or "");
@@ -203,7 +205,7 @@ def:pub UserProfilePage -> JsxElement {
                     is_returning_user = True;
                 }
                 latest_res = res.get("latest_resume");
-                if latest_res and isinstance(latest_res, dict) {
+                if latest_res {
                     existing_resume_title = str(latest_res.get("title", "Base Resume.pdf"));
                 }
             }
@@ -350,6 +352,7 @@ def:pub UserProfilePage -> JsxElement {
 
         try {
             res = await submit_profile_and_generate_query(
+                token=tok,
                 email=email.strip(),
                 first_name=first_name.strip(),
                 last_name=last_name.strip(),
@@ -359,8 +362,7 @@ def:pub UserProfilePage -> JsxElement {
                 salary_min=sal_int,
                 contract_type=ct_str,
                 resume_title=resume_title.strip() if resume_title else None,
-                resume_content=resume_content if resume_content else None,
-                token=tok
+                resume_content=resume_content if resume_content else None
             );
 
             if res and res.get("ok") {
@@ -435,8 +437,9 @@ def:pub UserProfilePage -> JsxElement {
                                     placeholder="ada@example.com"
                                     value={email}
                                     onChange={handle_email}
+                                    readOnly={email_locked}
                                     required
-                                    className="h-10 bg-background"
+                                    className={"h-10 " + ("bg-muted text-muted-foreground" if email_locked else "bg-background")}
                                 />
                             </div>
 

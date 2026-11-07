@@ -30,7 +30,9 @@ jobs:
       - name: Install project dependencies
         run: jac install
       - name: Compile Jac entry point
-        run: jac check main.jac
+        run: |
+          jac check main.jac
+          jac check cli.jac
       - name: Compile new applicant pages and backend
         run: |
           jac check components/ApplicantTools.jac
@@ -72,6 +74,7 @@ jobs:
               exit 1
             }
           done
+          .jac/venv/bin/python tests/identity_http_check.py
           .jac/venv/bin/python tests/demo_browser_smoke.py
       - name: Save browser failure details
         if: failure()

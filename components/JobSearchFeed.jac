@@ -405,10 +405,14 @@ def:pub JobSearchFeed -> JsxElement {
         if is_custom_search {
             return True;
         }
+        # The server already chose tailored jobs using the saved query, so these
+        # filters apply only after the user changes the search.
+        q_edited = query.strip() != tailored_query.strip();
+        locs_edited = ", ".join(locations_filter) != ", ".join(tailored_locations);
         hay = (str(j.get("title", "")) + " " + str(j.get("company", "")) + " " + str(j.get("tags", ""))).lower();
-        matches_q = query.strip().lower() in hay if query.strip() else True;
+        matches_q = query.strip().lower() in hay if (query.strip() and q_edited) else True;
         matches_l = True;
-        if locations_filter {
+        if locs_edited and locations_filter {
             j_loc = str(j.get("location", "")).lower();
             matched_any = False;
             for loc_f in locations_filter {
