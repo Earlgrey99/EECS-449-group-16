@@ -6,8 +6,9 @@ Loads the real extension in Chromium and drives its real popup:
     jac run --dev --profile test main.jac
     .jac/venv/bin/python tests/extension_e2e.py
 
-A toolbar click can't be automated, so the test copy of the extension gets a broad
-host permission in place of activeTab, and the popup is told which tab to use.
+A toolbar click can't be automated, so the test copy of the extension gets access to
+the fixture page's origin only, which matches what activeTab grants, and the popup is
+told which tab to use.
 Creates a throwaway account with random credentials in the configured database.
 """
 from __future__ import annotations
@@ -69,7 +70,7 @@ def prepare_extension(directory: Path) -> Path:
     target = directory / "extension"
     shutil.copytree(ROOT / "extension", target)
     manifest = json.loads((target / "manifest.json").read_text())
-    manifest["host_permissions"] = ["<all_urls>"]
+    manifest["host_permissions"] = ["http://localhost:8000/*", "http://127.0.0.1/*"]
     manifest["background"] = {"service_worker": "test_worker.js"}  # Reveals the extension id.
     (target / "manifest.json").write_text(json.dumps(manifest))
     (target / "test_worker.js").write_text("")
@@ -82,6 +83,7 @@ def serve_fixtures(directory: Path) -> tuple[http.server.HTTPServer, str]:
             pass
 
     handler = functools.partial(Quiet, directory=str(directory))
+    # The fixture embeds itself as localhost, a different origin from 127.0.0.1.
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
@@ -99,6 +101,7 @@ def main() -> int:
         pages = temp_path / "pages"
         pages.mkdir()
         shutil.copy(ROOT / "tests/extension/fixtures/tricky_form.html", pages)
+        shutil.copy(ROOT / "tests/extension/fixtures/other_origin_frame.html", pages)
         shutil.copy(ROOT / "examples/application_form.html", pages)
         server, site = serve_fixtures(pages)
 
@@ -214,6 +217,12 @@ def main() -> int:
                     check(f"reports sensitive field: {label}", label in report, report)
                 check("reports the kept answer", "Already has a value" in report, report)
                 check("report contains no values", "555-0100" not in report and email not in report, report)
+
+                other_frame = next(frame for frame in form.frames if "other_origin_frame" in frame.url)
+                check(
+                    "a page with an inaccessible frame still fills, and the frame stays empty",
+                    other_frame.locator("#frame-email").input_value() == "",
+                )
 
                 # Filling again must not overwrite the user's edits.
                 form.locator("#first").fill("Edited")

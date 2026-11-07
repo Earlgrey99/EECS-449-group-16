@@ -74,7 +74,11 @@
       <button type="submit">Submit application</button>
     </form>
 
+    <!-- Another origin. A real toolbar click gives no access to this frame. -->
+    <iframe id="other-origin" title="Other origin" width="300" height="60"></iframe>
+
     <script>
+      document.getElementById("other-origin").src = `http://localhost:${location.port}/other_origin_frame.html`;
       window.__submitted = false;
       window.__clicked = false;
       const form = document.getElementById("application");
