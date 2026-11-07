@@ -13,7 +13,7 @@ default_model = "deepseek/deekseek-flash"
 [placement.pins]
 "services.*" = "server"
 
-[dependencies.pypi]
+[dependencies]
 libsql = "~=0.1"
 litellm = ">=1.40"
 playwright = ">=1.50,<2.0"
@@ -22,7 +22,6 @@ python-docx = ">=1.0,<2.0"
 reportlab = ">=4.0,<5.0"
 
 [dev-dependencies]
-[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 [check]
