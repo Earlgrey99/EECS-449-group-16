@@ -63,6 +63,10 @@ def init_db(conn: any = None) {
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT,
             phone TEXT,
+            city TEXT,
+            linkedin TEXT,
+            github TEXT,
+            portfolio TEXT,
             auth_provider TEXT DEFAULT 'local',
             oauth_id TEXT,
             first_name TEXT,
@@ -123,6 +127,11 @@ def init_db(conn: any = None) {
     has_cached_job_query = any(column[1] == "cached_job_query" for column in user_columns);
     if not has_cached_job_query {
         db_conn.execute("ALTER TABLE users ADD COLUMN cached_job_query TEXT;");
+    }
+    for contact_column in ["city", "linkedin", "github", "portfolio"] {
+        if not any(column[1] == contact_column for column in user_columns) {
+            db_conn.execute(f"ALTER TABLE users ADD COLUMN {contact_column} TEXT;");
+        }
     }
     has_onboarding_completed = any(column[1] == "onboarding_completed" for column in user_columns);
     if not has_onboarding_completed {
@@ -571,6 +580,25 @@ def update_user(
     vals.append(user_id);
     sql = f"UPDATE users SET {', '.join(fields)} WHERE id = ?";
     cur.execute(sql, tuple(vals));
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
+"""Save the details used to fill job applications. A blank value clears that detail."""
+def save_contact_details(
+    user_id: int,
+    phone: str,
+    city: str,
+    linkedin: str,
+    github: str,
+    portfolio: str,
+    conn: any = None
+) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET phone = ?, city = ?, linkedin = ?, github = ?, portfolio = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (phone, city, linkedin, github, portfolio, user_id)
+    );
     db_conn.commit();
     return get_user_by_id(user_id, conn=db_conn);
 }

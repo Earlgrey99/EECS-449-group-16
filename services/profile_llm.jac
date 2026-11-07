@@ -13,6 +13,7 @@ import from db {
     get_user_by_id,
     get_user_by_oauth_id,
     sync_oauth_user,
+    save_contact_details as save_contact_row,
     save_user_profile,
     create_resume,
     list_resumes_by_user
@@ -411,6 +412,69 @@ def _load_profile(
         "cached_query": None,
         "onboarding_completed": False
     };
+}
+
+"""Check contact details before saving, because they get typed into other sites' forms."""
+def _clean_contact(phone: str, city: str, linkedin: str, github: str, portfolio: str) -> dict[str, any] {
+    clean_phone = str(phone or "").strip();
+    if clean_phone and not re.fullmatch(r"[+\d\s()\-.]{7,25}", clean_phone) {
+        return {"ok": False, "error": "Enter a valid phone number."};
+    }
+    links = {"LinkedIn": linkedin, "GitHub": github, "Portfolio": portfolio};
+    clean_links: dict[str, str] = {};
+    for (label, value) in links.items() {
+        link = str(value or "").strip();
+        if link and not re.fullmatch(r"https?://[^\s.]+\.[^\s]+", link) {
+            return {"ok": False, "error": f"Enter a full {label} URL, starting with https://"};
+        }
+        clean_links[label] = link[:300];
+    }
+    return {
+        "ok": True,
+        "phone": clean_phone,
+        "city": str(city or "").strip()[:120],
+        "linkedin": clean_links["LinkedIn"],
+        "github": clean_links["GitHub"],
+        "portfolio": clean_links["Portfolio"]
+    };
+}
+
+def _save_contact(
+    user_id: int,
+    phone: str,
+    city: str,
+    linkedin: str,
+    github: str,
+    portfolio: str,
+    conn: any = None
+) -> dict[str, any] {
+    clean = _clean_contact(phone, city, linkedin, github, portfolio);
+    if not clean["ok"] {
+        return clean;
+    }
+    user = save_contact_row(
+        user_id, clean["phone"], clean["city"], clean["linkedin"], clean["github"], clean["portfolio"], conn=conn
+    );
+    return {"ok": True, "user": _public_user(user)};
+}
+
+def:protect save_contact_details(
+    token: str,
+    phone: str,
+    city: str,
+    linkedin: str,
+    github: str,
+    portfolio: str
+) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    user = caller["app_user"];
+    if user is None {
+        return {"ok": False, "error": "Save your profile first."};
+    }
+    return _save_contact(int(user["id"]), phone, city, linkedin, github, portfolio);
 }
 
 def:protect get_user_profile_data(token: str) -> dict[str, any] {

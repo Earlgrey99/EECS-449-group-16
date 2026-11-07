@@ -21,7 +21,7 @@ import from .ui.badge { Badge }
 import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
-import from ..services.profile_llm { submit_profile_and_generate_query, get_user_profile_data }
+import from ..services.profile_llm { submit_profile_and_generate_query, get_user_profile_data, save_contact_details }
 import from ..services.locations { search_cities }
 
 glob POPULAR_SECTORS: list[str] = [
@@ -55,6 +55,11 @@ def:pub UserProfilePage -> JsxElement {
 
     has email: str = "";
     has email_locked: bool = False;
+    has phone: str = "";
+    has city: str = "";
+    has linkedin: str = "";
+    has github: str = "";
+    has portfolio: str = "";
     has first_name: str = "";
     has last_name: str = "";
     has locations: list[str] = ["Remote"];
@@ -153,6 +158,11 @@ def:pub UserProfilePage -> JsxElement {
                 }
                 first_name = loaded_fn;
                 last_name = loaded_ln;
+                phone = str(u.get("phone", "") or "");
+                city = str(u.get("city", "") or "");
+                linkedin = str(u.get("linkedin", "") or "");
+                github = str(u.get("github", "") or "");
+                portfolio = str(u.get("portfolio", "") or "");
 
                 if u.get("location") {
                     raw_loc = str(u.get("location")).strip();
@@ -216,6 +226,11 @@ def:pub UserProfilePage -> JsxElement {
     def handle_first_name(e: ChangeEvent) { first_name = e.target.value; }
     def handle_last_name(e: ChangeEvent) { last_name = e.target.value; }
     def handle_email(e: ChangeEvent) { email = e.target.value; }
+    def handle_phone(e: ChangeEvent) { phone = e.target.value; }
+    def handle_city(e: ChangeEvent) { city = e.target.value; }
+    def handle_linkedin(e: ChangeEvent) { linkedin = e.target.value; }
+    def handle_github(e: ChangeEvent) { github = e.target.value; }
+    def handle_portfolio(e: ChangeEvent) { portfolio = e.target.value; }
     def handle_job_titles(e: ChangeEvent) { job_titles = e.target.value; }
     def handle_salary(e: ChangeEvent) { salary_min = e.target.value; }
 
@@ -366,8 +381,21 @@ def:pub UserProfilePage -> JsxElement {
             );
 
             if res and res.get("ok") {
+                contact: any = await save_contact_details(
+                    token=tok,
+                    phone=phone.strip(),
+                    city=city.strip(),
+                    linkedin=linkedin.strip(),
+                    github=github.strip(),
+                    portfolio=portfolio.strip()
+                );
                 submitting = False;
-                nav("/jobs");
+                if contact and contact.get("ok") {
+                    nav("/jobs");
+                } else {
+                    step = 1;
+                    message = str(contact.get("error") if contact else "Could not save your contact details.");
+                }
             } else {
                 err_msg = str(res.get("error") if res else "Failed to save profile.");
                 message = err_msg;
@@ -441,6 +469,30 @@ def:pub UserProfilePage -> JsxElement {
                                     required
                                     className={"h-10 " + ("bg-muted text-muted-foreground" if email_locked else "bg-background")}
                                 />
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="flex flex-col gap-1.5">
+                                    <label htmlFor="profile-phone" className="text-xs font-medium text-foreground">Phone</label>
+                                    <Input id="profile-phone" type="tel" placeholder="(555) 555-0100" value={phone} onChange={handle_phone} className="h-10 bg-background" />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label htmlFor="profile-city" className="text-xs font-medium text-foreground">City you live in</label>
+                                    <Input id="profile-city" placeholder="Ann Arbor" value={city} onChange={handle_city} className="h-10 bg-background" />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label htmlFor="profile-linkedin" className="text-xs font-medium text-foreground">LinkedIn URL</label>
+                                    <Input id="profile-linkedin" type="url" placeholder="https://linkedin.com/in/you" value={linkedin} onChange={handle_linkedin} className="h-10 bg-background" />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label htmlFor="profile-github" className="text-xs font-medium text-foreground">GitHub URL</label>
+                                    <Input id="profile-github" type="url" placeholder="https://github.com/you" value={github} onChange={handle_github} className="h-10 bg-background" />
+                                </div>
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                    <label htmlFor="profile-portfolio" className="text-xs font-medium text-foreground">Portfolio URL</label>
+                                    <Input id="profile-portfolio" type="url" placeholder="https://your-site.com" value={portfolio} onChange={handle_portfolio} className="h-10 bg-background" />
+                                    <p className="text-xs text-muted-foreground">Optional. The Launchpad extension uses these details to fill job applications.</p>
+                                </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5 relative">
