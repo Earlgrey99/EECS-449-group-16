@@ -63,6 +63,11 @@ def create_account() -> tuple[str, str]:
         "resume_content": "data:application/pdf;base64," + base64.b64encode(RESUME_BYTES).decode(),
     }, token)
     assert saved["data"]["result"]["ok"], saved
+    contact = api("/function/save_contact_details", {
+        "token": token, "phone": "555-0100", "city": "Ann Arbor", "linkedin": "https://linkedin.com/in/ada",
+        "github": "https://github.com/ada", "portfolio": "https://ada.example",
+    }, token)
+    assert contact["data"]["result"]["ok"], contact
     return email, token
 
 
@@ -143,16 +148,6 @@ def main() -> int:
                 stored = popup.evaluate("chrome.storage.local.get(null)")
                 check("token is not kept in persistent storage", token not in json.dumps(stored), stored)
 
-                # Details saved in the extension.
-                popup.locator("#settings summary").click()
-                popup.locator("input[name=phone]").fill("555-0100")
-                popup.locator("input[name=location]").fill("Ann Arbor")
-                popup.locator("input[name=linkedin]").fill("https://linkedin.com/in/ada")
-                popup.locator("input[name=github]").fill("https://github.com/ada")
-                popup.locator("input[name=portfolio]").fill("https://ada.example")
-                popup.locator("#details-form button[type=submit]").click()
-                popup.get_by_text("Saved.", exact=True).wait_for(timeout=5000)
-
                 # Preview must not change the page.
                 popup.locator("#preview").click()
                 popup.locator("#results h2").first.wait_for(timeout=10000)
@@ -224,12 +219,38 @@ def main() -> int:
                     other_frame.locator("#frame-email").input_value() == "",
                 )
 
+                # Add the job to the tracker from the popup.
+                track = popup.locator("#track-form")
+                check("offers to add the job to the tracker", track.is_visible())
+                check(
+                    "guesses the job title from the page",
+                    track.locator("input[name=role]").input_value() == "Software Engineer application",
+                    track.locator("input[name=role]").input_value(),
+                )
+                track.locator("input[name=role]").fill("Software Engineer")
+                track.locator("input[name=company]").fill("Fixture Co")
+                track.locator("button[type=submit]").click()
+                popup.get_by_text("Added to your tracker.", exact=True).wait_for(timeout=10000)
+                tracked = api("/function/list_tracker_applications", {"token": token}, token)["data"]["result"]["applications"]
+                check(
+                    "the job reaches the tracker with its link",
+                    len(tracked) == 1 and tracked[0]["role"] == "Software Engineer" and tracked[0]["company"] == "Fixture Co"
+                    and tracked[0]["job_url"].endswith("/tricky_form.html") and tracked[0]["status"] == "Applied",
+                    tracked,
+                )
+
                 # Filling again must not overwrite the user's edits.
                 form.locator("#first").fill("Edited")
                 popup.locator("#fill").click()
                 popup.get_by_text("Already has a value", exact=False).wait_for(timeout=10000)
                 form.wait_for_timeout(500)
                 check("does not overwrite user edits", form.locator("#first").input_value() == "Edited")
+                popup.locator("#track-form button[type=submit]").wait_for(timeout=5000)
+                popup.locator("#track-form input[name=role]").fill("Software Engineer")
+                popup.locator("#track-form input[name=company]").fill("Fixture Co")
+                popup.locator("#track-form button[type=submit]").click()
+                popup.get_by_text("already in your tracker", exact=False).wait_for(timeout=10000)
+                check("does not add the same job twice", True)
 
                 # The repo's plain sample form, with the resume turned off.
                 sample = context.new_page()

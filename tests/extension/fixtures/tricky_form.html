@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Tricky application form</title>
+    <title>Software Engineer application</title>
   </head>
   <body>
     <h1>Software Engineer application</h1>
@@ -25,14 +25,16 @@
       <input id="controlled" name="github" />
       <output id="controlled-state"></output>
 
-      <label for="city">City</label>
+      <!-- Lever-style: a hidden error message sits inside the label. -->
+      <label for="city">City<span style="display: none">No location found. Try again.</span></label>
       <select id="city" name="city">
         <option value="">Select</option>
         <option value="det">Detroit</option>
         <option value="ann">Ann Arbor</option>
       </select>
 
-      <label for="resume">Resume/CV</label>
+      <!-- Greenhouse-style: the label says only "Attach". -->
+      <label for="resume">Attach</label>
       <input id="resume" name="resume" type="file" />
 
       <label for="existing">Portfolio</label>

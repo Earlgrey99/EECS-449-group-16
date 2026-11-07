@@ -26,10 +26,12 @@ The extension also works in other Chromium browsers, such as Edge and Brave.
 |---|---|
 | First name, last name, full name, email | Launchpad account |
 | Resume | Newest resume in your Launchpad profile, if the box is checked |
-| Phone, city, LinkedIn, GitHub, portfolio | **Details and settings** in the popup, saved only in this browser |
+| Phone, city, LinkedIn, GitHub, portfolio | Your Launchpad profile |
 
-It uses only City for location, because the Launchpad location field holds the
-places you want to work.
+It uses your profile's city for location fields, not your target job locations.
+
+After a page is previewed or filled, the popup can add the job to your Launchpad
+tracker. It guesses the title and company from the page, so check them first.
 
 ## What it leaves alone
 
@@ -45,8 +47,8 @@ places you want to work.
 
 - `activeTab` and `scripting`: run on a page only when you click a popup button.
   The extension has no access to the sites you browse otherwise.
-- `storage`: holds your session token until the browser closes, and your details
-  and settings in this browser.
+- `storage`: holds your session token until the browser closes, and the Launchpad
+  address in this browser.
 - Access to `http://localhost:8000`: read your Launchpad session and profile.
   Another Launchpad address must use HTTPS, and Chrome asks you to approve it.
 
@@ -60,7 +62,11 @@ forms on sites you trust.
   popup links to known hiring systems so you can open the form in its own tab.
 - **Multi-step forms** such as Workday: click **Fill this page** again on each step.
 - **Custom dropdowns** that aren't real `<select>` elements aren't filled.
-- **Real hiring sites** haven't been tested yet, so review every field.
+- **Search-as-you-type location fields**, like those on Greenhouse and Lever, may need
+  you to pick a suggestion after the city is filled.
+- **Real applications:** detection was checked against live Greenhouse, Lever, and Ashby
+  forms without filling them. Filling a real form still needs hand testing, so review
+  every field.
 
 ## Tests
 

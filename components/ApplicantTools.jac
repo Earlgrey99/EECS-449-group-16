@@ -2,7 +2,7 @@ import from "@jac/runtime" { jacIsLoggedIn, Navigate, useLocation }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
-import from ..services.applicant_demo { review_resume_text }
+import from ..services.applicant_demo { review_resume_text, get_applicant_details }
 import from ..services.jobs { list_jobs }
 
 def:pub ApplicantTools() -> JsxElement {
@@ -12,7 +12,7 @@ def:pub ApplicantTools() -> JsxElement {
         return <Navigate to="/login" replace={True} />;
     }
 
-    # Session-only profile fields (never saved to the server).
+    # Filled from the saved profile. Edits here stay on this page.
     has full_name: str = "";
     has email: str = "";
     has phone: str = "";
@@ -21,7 +21,7 @@ def:pub ApplicantTools() -> JsxElement {
     has filled_email: str = "";
     has filled_phone: str = "";
     has filled_linkedin: str = "";
-    has autofill_message: str = "Enter test applicant details, then preview the autofill.";
+    has autofill_message: str = "Check your details, then preview the autofill.";
 
     # Resume review is computed server-side using the existing tailoring module.
     has role: str = "Data Analyst";
@@ -33,6 +33,25 @@ def:pub ApplicantTools() -> JsxElement {
     has did_init_tools: bool = False;
 
     has job_notice: str = "";
+    has saved_resume_title: str = "";
+
+    # Use the saved profile and resume, so the user doesn't retype them here.
+    async def load_saved_details {
+        try {
+            tok = str(localStorage.getItem("jac_token") or "");
+            saved: any = await get_applicant_details(token=tok);
+            if saved and saved.get("ok") {
+                full_name = str(saved.get("name") or "");
+                email = str(saved.get("email") or "");
+                phone = str(saved.get("phone") or "");
+                linkedin = str(saved.get("linkedin") or "");
+                if saved.get("resume_text") {
+                    resume_text = str(saved.get("resume_text"));
+                    saved_resume_title = str(saved.get("resume_title") or "");
+                }
+            }
+        } except Exception {}
+    }
 
     # Job descriptions can hold HTML. DOMParser reads it without running any of it.
     def plain_text(raw: str) -> str {
@@ -53,6 +72,7 @@ def:pub ApplicantTools() -> JsxElement {
             return;
         }
         did_init_tools = True;
+        await load_saved_details();
         passed: any = location.state.get("job") if location.state else None;
         if passed {
             use_job(str(passed.get("title") or ""), str(passed.get("desc") or ""), str(passed.get("tags") or ""));
@@ -117,7 +137,7 @@ def:pub ApplicantTools() -> JsxElement {
                 <p className="text-sm font-semibold text-primary">LAUNCHPAD EXPERIMENTAL WORKSPACE</p>
                 <h1 className="text-3xl font-semibold tracking-tight">Application tools</h1>
                 <p className="max-w-3xl text-muted-foreground">Try two local prototypes: a sample application autofill and a job-specific resume review. Neither submits a job application or modifies your original resume.</p>
-                <p className="text-sm text-amber-700">Prototype only. Profile fields exist in this page session, not in Turso. Refreshing clears them. Use sample information for testing.</p>
+                <p className="text-sm text-amber-700">Prototype only. Details come from your Launchpad profile, and edits here aren't saved. To fill real applications, use the Launchpad browser extension.</p>
             </header>
 
             <section className="rounded-2xl border bg-card p-6 shadow-sm">
@@ -184,6 +204,7 @@ def:pub ApplicantTools() -> JsxElement {
                             <textarea className="min-h-52 rounded-lg border bg-background p-3 font-mono text-sm font-normal" value={job_description} onChange={lambda (e: ChangeEvent) { job_description = e.target.value; }} />
                         </label>
                     </div>
+                    {bool(saved_resume_title) and <p className="text-sm text-muted-foreground">{"Using your saved resume: " + saved_resume_title}</p>}
                     <div className="flex flex-wrap items-center gap-3">
                         <Button type="submit" disabled={reviewing}>{"Generating review..." if reviewing else "Generate resume review"}</Button>
                         <p className="text-xs text-muted-foreground">Text is sent to your local Jac backend, not a third-party AI service.</p>

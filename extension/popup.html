@@ -35,21 +35,23 @@
 
     <p id="message" role="status" hidden></p>
 
+    <form id="track-form" hidden>
+      <h2>Applied? Add it to your tracker</h2>
+      <label>Job title <input name="role" autocomplete="off" required /></label>
+      <label>Company <input name="company" autocomplete="off" required /></label>
+      <button type="submit">Add to tracker</button>
+    </form>
+
     <details id="settings">
-      <summary>Details and settings</summary>
-      <form id="details-form">
-        <p class="muted">Saved only in this browser. These aren't part of your Launchpad profile yet.</p>
-        <label>Phone <input name="phone" type="tel" autocomplete="off" /></label>
-        <label>City <input name="location" autocomplete="off" /></label>
-        <label>LinkedIn URL <input name="linkedin" type="url" autocomplete="off" /></label>
-        <label>GitHub URL <input name="github" type="url" autocomplete="off" /></label>
-        <label>Portfolio URL <input name="portfolio" type="url" autocomplete="off" /></label>
+      <summary>Settings</summary>
+      <form id="settings-form">
         <label>Launchpad address <input name="base" type="url" autocomplete="off" required /></label>
         <button type="submit">Save</button>
       </form>
     </details>
 
     <footer>Launchpad never submits an application. Review every field before you submit.</footer>
+    <script src="autofill.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

@@ -37,7 +37,10 @@
       "phone", "phone number", "phone no", "mobile", "mobile number", "mobile phone",
       "cell", "cell phone", "telephone", "telephone number",
     ],
-    location: ["location", "city", "current city", "current location", "city state"],
+    location: [
+      "location", "city", "current city", "current location", "city state", "location city",
+      "city location",
+    ],
     linkedin: ["linkedin", "linkedin url", "linkedin profile", "linkedin profile url"],
     github: ["github", "github url", "github profile", "github profile url"],
     portfolio: [
@@ -67,6 +70,8 @@
     "section", "basic", "name", "urls", "url",
   ]);
   const UNSAFE_CONTEXT = /\b(emergency|reference|referr\w*|manager|supervisor|recruiter|company|employer|school|university|parent|spouse)\b/;
+
+  const OTHER_DOCUMENT = /\b(cover|transcript|writing|portfolio|sample)\b/;
 
   const SKIPPED_TYPES = new Set([
     "hidden", "submit", "button", "reset", "image", "checkbox", "radio", "range", "color", "search",
@@ -132,15 +137,33 @@
     }
     if (!key && !hasLabel && AUTOCOMPLETE[auto]) key = AUTOCOMPLETE[auto];
 
+    // Upload buttons often say only "Attach", so the field's name identifies a resume.
+    if (!key && type === "file" && !OTHER_DOCUMENT.test(normalize(attrs.label))) {
+      for (const text of [attrs.name, attrs.id, attrs.automationId]) {
+        if (matchKey(text) === "resume") key = "resume";
+      }
+    }
+
     // A resume goes only into a file input, and a file input takes only a resume.
     if ((type === "file") !== (key === "resume")) key = null;
     return { key, sensitive: false };
   }
 
+  // Reads only what the user can see, so a label's hidden error text doesn't count.
+  function visibleText(node) {
+    let text = "";
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === 3) {
+        text += child.textContent;
+      } else if (child.nodeType === 1 && !child.matches("input, select, textarea, button") && child.getClientRects().length) {
+        text += " " + visibleText(child);
+      }
+    });
+    return text;
+  }
+
   function textOfLabel(label) {
-    const copy = label.cloneNode(true);
-    copy.querySelectorAll("input, select, textarea, button").forEach((el) => el.remove());
-    return copy.textContent.trim();
+    return visibleText(label).replace(/\s+/g, " ").trim();
   }
 
   function labelFor(el, doc) {
@@ -268,16 +291,19 @@
       if (SKIPPED_TYPES.has(type)) return;
 
       const { key, sensitive } = classify(attrs);
-      const label = (attrs.label || attrs.ariaLabel || attrs.placeholder || attrs.name || attrs.id || "Unnamed field").slice(0, 80);
+      let label = (attrs.label || attrs.ariaLabel || attrs.placeholder || attrs.name || attrs.id || "Unnamed field").slice(0, 80);
       if (sensitive) {
         if (type !== "password") fields.push({ label, key: null, status: "sensitive" });
         return;
       }
       if (!key) {
-        if (isUsable(el, type)) unmatched += 1;
+        // Sites keep extra hidden file inputs, which aren't fields the user sees.
+        if (type !== "file" && isUsable(el, type)) unmatched += 1;
         return;
       }
       if (!isUsable(el, type)) return;
+      // Sites label upload buttons "Attach" and the like, which means nothing in a list.
+      if (key === "resume") label = "Resume";
 
       const value = key === "resume" ? profile.resume : profile[key];
       if (!value) {
@@ -298,6 +324,7 @@
 
     return {
       url: doc.location.href,
+      title: doc.title,
       isTopFrame: win === win.top,
       fields,
       unmatched,
@@ -305,7 +332,24 @@
     };
   }
 
-  const api = { classify, matchKey, normalize, run };
+  // Best guess from a page title, for the user to check before adding it to the tracker.
+  function parseJobTitle(title) {
+    const text = String(title || "").replace(/\s+/g, " ").trim();
+    const patterns = [
+      [/^Job Application for (.+) at (.+)$/i, 1, 2], // Greenhouse
+      [/^(.+) - Careers at (.+)$/i, 1, 2],
+      [/^(.+) @ (.+)$/, 1, 2], // Ashby
+      [/^(.+?) - (.+)$/, 2, 1], // Lever: "Company - Role"
+      [/^(.+) at (.+)$/i, 1, 2],
+    ];
+    for (const [pattern, role, company] of patterns) {
+      const match = text.match(pattern);
+      if (match) return { role: match[role].trim(), company: match[company].trim() };
+    }
+    return { role: text, company: "" };
+  }
+
+  const api = { classify, matchKey, normalize, parseJobTitle, run };
   root.LaunchpadAutofill = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

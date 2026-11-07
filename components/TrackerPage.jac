@@ -14,6 +14,7 @@ glob TRACKER_STATUSES: list[str] = ["Applied", "Interview", "Offer", "Rejected",
 def:pub TrackerRow(
     role: str,
     company: str,
+    job_url: str,
     applied_date: str,
     description: str,
     pay: str,
@@ -28,7 +29,10 @@ def:pub TrackerRow(
     }
 
     return <tr className="border-b last:border-b-0 hover:bg-muted/30">
-        <td className="whitespace-nowrap px-4 py-3.5 font-medium text-foreground">{company}</td>
+        <td className="whitespace-nowrap px-4 py-3.5 font-medium text-foreground">
+            {bool(job_url) and <a href={job_url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-primary">{company}</a>}
+            {(not job_url) and <span>{company}</span>}
+        </td>
         <td className="whitespace-nowrap px-4 py-3.5 text-sm">{role}</td>
         <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{applied_date}</td>
         <td className="max-w-56 truncate px-4 py-3.5 text-sm text-muted-foreground" title={description}>{description}</td>
@@ -189,7 +193,9 @@ def:pub TrackerPage() -> JsxElement {
                 return;
             }
             added: any = res.get("application");
-            applications = [added] + applications;
+            if not res.get("already_tracked") {
+                applications = [added] + applications;
+            }
         } except Exception {
             form_error = "Could not save the application.";
             return;
@@ -351,6 +357,7 @@ def:pub TrackerPage() -> JsxElement {
                                     key={str(app["id"])}
                                     role={str(app["role"])}
                                     company={str(app["company"])}
+                                    job_url={str(app.get("job_url") or "")}
                                     applied_date={str(app["date"])}
                                     description={str(app["description"])}
                                     pay={str(app["pay"])}

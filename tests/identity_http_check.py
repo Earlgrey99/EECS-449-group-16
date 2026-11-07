@@ -41,6 +41,8 @@ PROTECTED = {
     "get_resume_match_scores": {"jobs": [], "token": "x"},
     "submit_profile_and_generate_query": {"token": "x", "first_name": "X"},
     "sync_user_session": {"token": "x"},
+    "save_contact_details": {"token": "x", "phone": "", "city": "", "linkedin": "", "github": "", "portfolio": ""},
+    "get_applicant_details": {"token": "x"},
     "list_tracker_applications": {"token": "x"},
     "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
     "set_tracker_status": {"token": "x", "app_id": 1, "status": "Offer"},
@@ -150,6 +152,19 @@ def main() -> int:
     http("/function/submit_profile_and_generate_query", {"token": bob, "email": alice_email, "first_name": "Mallory"}, bob)
     _, payload, raw = http("/function/get_user_profile_data", {"token": alice}, alice)
     check("another user cannot overwrite the profile", (result(payload).get("user") or {}).get("first_name") == "Alice", raw[:200])
+
+    # Contact details and the saved resume stay with their owner.
+    contact = {"phone": "555-0100", "city": "Ann Arbor", "linkedin": "https://linkedin.com/in/alice", "github": "", "portfolio": ""}
+    _, payload, raw = http("/function/save_contact_details", {"token": alice, **contact}, alice)
+    check("user can save contact details", result(payload).get("ok") is True, raw[:200])
+    _, payload, raw = http("/function/get_applicant_details", {"token": alice}, alice)
+    details = result(payload)
+    check("applicant details include contact and resume", details.get("phone") == "555-0100" and RESUME in str(details.get("resume_text")), raw[:200])
+    _, _, raw = http("/function/get_applicant_details", {"token": bob}, bob)
+    check("another user cannot read applicant details", RESUME not in raw and "555-0100" not in raw, raw[:200])
+    http("/function/save_contact_details", {"token": bob, "email": alice_email, "phone": "555-0199", "city": "", "linkedin": "", "github": "", "portfolio": ""}, bob)
+    _, payload, raw = http("/function/get_user_profile_data", {"token": alice}, alice)
+    check("another user cannot change contact details", (result(payload).get("user") or {}).get("phone") == "555-0100", raw[:200])
 
     # Tracker rows stay with their owner.
     _, payload, raw = http("/function/add_tracker_application", {

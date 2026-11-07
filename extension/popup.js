@@ -1,16 +1,16 @@
 "use strict";
 
 const DEFAULT_BASE = "http://localhost:8000";
-const DETAIL_FIELDS = ["phone", "location", "linkedin", "github", "portfolio"];
 const $ = (id) => document.getElementById(id);
 
 let account = null;
+let pageUrl = "";
 
 const GROUPS = [
   { status: "filled", title: "Filled. Please review" },
   { status: "ready", title: "Ready to fill" },
   { status: "kept", title: "Already has a value, left unchanged" },
-  { status: "no_value", title: "No saved value. Add it under Details", warn: true },
+  { status: "no_value", title: "Not in your profile. Add it in Launchpad", warn: true },
   { status: "not_fillable", title: "Couldn't fill. Please complete by hand", warn: true },
   { status: "sensitive", title: "Please answer these yourself", warn: true },
 ];
@@ -106,19 +106,18 @@ function render() {
 
 async function buildProfile() {
   const { user, resume } = account;
-  const { details = {} } = await chrome.storage.local.get("details");
   const profile = {
     first_name: user.first_name || "",
     last_name: user.last_name || "",
     name: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.name || "",
     email: user.email || "",
     phone: user.phone || "",
+    // user.location holds target job locations, so city is where the user lives.
+    location: user.city || "",
+    linkedin: user.linkedin || "",
+    github: user.github || "",
+    portfolio: user.portfolio || "",
   };
-  // The Launchpad location field holds target job locations, not where the user
-  // lives, so only the City saved under Details is used for location.
-  for (const field of DETAIL_FIELDS) {
-    if (details[field]) profile[field] = details[field];
-  }
   if (resume && $("include-resume").checked) {
     profile.resume = { title: resume.title, content: resume.content };
   }
@@ -145,7 +144,9 @@ async function runOnPage(apply) {
       func: (values, isApply) => window.LaunchpadAutofill.run(values, { apply: isApply }, document),
       args: [profile, apply],
     });
-    renderResults(frames.map((frame) => frame.result).filter(Boolean));
+    const reports = frames.map((frame) => frame.result).filter(Boolean);
+    renderResults(reports);
+    showTrackForm(reports);
   } catch (error) {
     showMessage(friendlyInjectionError(error), true);
   } finally {
@@ -208,11 +209,50 @@ function renderResults(reports) {
   }
 }
 
-async function loadDetailsForm() {
-  const { details = {} } = await chrome.storage.local.get("details");
-  const form = $("details-form");
-  for (const field of DETAIL_FIELDS) form.elements[field].value = details[field] || "";
-  form.elements.base.value = await getBase();
+// Offered once a page has application fields, with a guess the user can correct.
+function showTrackForm(reports) {
+  const top = reports.find((report) => report.isTopFrame) || reports[0];
+  const hasFields = reports.some((report) => report.fields.length);
+  $("track-form").hidden = !top || !hasFields;
+  if (!top || !hasFields) return;
+  const guess = window.LaunchpadAutofill.parseJobTitle(top.title);
+  const form = $("track-form");
+  if (!form.elements.role.value) form.elements.role.value = guess.role;
+  if (!form.elements.company.value) form.elements.company.value = guess.company;
+  pageUrl = top.url;
+}
+
+async function addToTracker(event) {
+  event.preventDefault();
+  const form = event.target;
+  showMessage("");
+  try {
+    const { token } = await chrome.storage.session.get("token");
+    const url = new URL(pageUrl);
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    const result = await callLaunchpad("add_tracker_application", {
+      token,
+      role: form.elements.role.value.trim(),
+      company: form.elements.company.value.trim(),
+      applied_date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+      description: "",
+      pay: null,
+      status: "Applied",
+      job_url: url.origin + url.pathname,
+      salary_text: "",
+    }, token);
+    if (!result.ok) throw new Error(result.error || "Couldn't add this to your tracker.");
+    form.hidden = true;
+    showMessage(result.already_tracked ? "This job is already in your tracker." : "Added to your tracker.");
+  } catch (error) {
+    if (error.expired) await chrome.storage.session.remove("token");
+    showMessage(error.message, true);
+  }
+}
+
+async function loadSettingsForm() {
+  $("settings-form").elements.base.value = await getBase();
 }
 
 // Only http://localhost may be plain HTTP, because the session token travels to this address.
@@ -225,7 +265,7 @@ function parseBase(value) {
   return url.origin;
 }
 
-async function saveDetails(event) {
+async function saveSettings(event) {
   event.preventDefault();
   const form = event.target;
   try {
@@ -234,10 +274,8 @@ async function saveDetails(event) {
       const granted = await chrome.permissions.request({ origins: [`${base}/*`] });
       if (!granted) throw new Error("Launchpad needs permission to reach that address.");
     }
-    const details = {};
-    for (const field of DETAIL_FIELDS) details[field] = form.elements[field].value.trim();
     const previous = await getBase();
-    await chrome.storage.local.set({ details, base });
+    await chrome.storage.local.set({ base });
     if (previous !== base) await disconnect();
     showMessage("Saved.");
   } catch (error) {
@@ -249,7 +287,8 @@ $("connect").addEventListener("click", () => connect().catch((error) => showMess
 $("disconnect").addEventListener("click", disconnect);
 $("preview").addEventListener("click", () => runOnPage(false));
 $("fill").addEventListener("click", () => runOnPage(true));
-$("details-form").addEventListener("submit", saveDetails);
+$("settings-form").addEventListener("submit", saveSettings);
+$("track-form").addEventListener("submit", addToTracker);
 
-loadDetailsForm();
+loadSettingsForm();
 loadAccount();

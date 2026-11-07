@@ -20,7 +20,8 @@ import from services.profile_llm {
     generate_fallback_query,
     generate_job_search_params,
     _submit_profile,
-    _load_profile
+    _load_profile,
+    _save_contact
 }
 import from services.jobs { _tailored_jobs_for }
 
@@ -336,4 +337,29 @@ test "get_user_tailored_jobs matches listings with multi-select contract types a
     tailored = _tailored_jobs_for(email, conn=conn);
     assert tailored["ok"] is True;
     assert len(tailored["jobs"]) > 0;
+}
+
+test "contact details are saved, cleared, and validated" {
+    conn = make_test_db();
+    email = "contact@example.com";
+    uid = int(register_user(name="Contact", email=email, password="password123", conn=conn)["id"]);
+
+    saved = _save_contact(uid, "(555) 555-0100", " Ann Arbor ", "https://linkedin.com/in/a", "https://github.com/a", "https://a.example", conn=conn);
+    assert saved["ok"] is True;
+    assert saved["user"]["phone"] == "(555) 555-0100";
+    assert saved["user"]["city"] == "Ann Arbor";
+    assert saved["user"]["linkedin"] == "https://linkedin.com/in/a";
+    assert "password_hash" not in saved["user"];
+    loaded = _load_profile(email=email, conn=conn)["user"];
+    assert loaded["github"] == "https://github.com/a";
+    assert loaded["portfolio"] == "https://a.example";
+
+    assert _save_contact(uid, "call me", "", "", "", "", conn=conn)["ok"] is False;
+    assert _save_contact(uid, "", "", "javascript:alert(1)", "", "", conn=conn)["ok"] is False;
+    assert _save_contact(uid, "", "", "", "github.com/a", "", conn=conn)["ok"] is False;
+    assert _load_profile(email=email, conn=conn)["user"]["phone"] == "(555) 555-0100";
+
+    cleared = _save_contact(uid, "", "", "", "", "", conn=conn)["user"];
+    assert cleared["phone"] == "";
+    assert cleared["linkedin"] == "";
 }
