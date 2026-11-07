@@ -497,6 +497,12 @@ def fetch_usajobs(
     return [normalize_usajobs_job(item) for item in items];
 }
 
+"""Himalayas only accepts a country here, not "Remote" or a city like "Chicago, IL"."""
+def _is_country_name(location: str | None) -> bool {
+    value = str(location or "").strip();
+    return bool(value) and "," not in value and "remote" not in value.lower();
+}
+
 def fetch_himalayas(
     n: int,
     search: str,
@@ -509,7 +515,7 @@ def fetch_himalayas(
     key = api_key or os.environ.get("HIMALAYAS_API_KEY", "");
     base_url = build_himalayas_url(domain=domain, endpoint=endpoint);
     query_params: dict[str, any] = {"q": search, "limit": min(max(n, 1), 20)};
-    if location {
+    if _is_country_name(location) {
         query_params["country"] = location;
     }
     url = f"{base_url}?{urllib.parse.urlencode(query_params)}";
@@ -689,7 +695,8 @@ def fetch(
             matched_any_loc = False;
             for loc_target in targets {
                 if "remote" in loc_target {
-                    if "remote" in job_loc {
+                    # Himalayas is a remote-only board. Its locations list countries.
+                    if "remote" in job_loc or job.get("source") == "himalayas" {
                         matched_any_loc = True;
                         break;
                     }
