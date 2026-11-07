@@ -13,6 +13,12 @@ import from services.compatibility { get_resume_match_scores }
 import from services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from services.locations { search_cities }
 import from services.profile_llm { submit_profile_and_generate_query, get_user_profile_data }
+import from services.tracker {
+    list_tracker_applications,
+    add_tracker_application,
+    set_tracker_status,
+    remove_tracker_application
+}
 
 with entry:__main__ {
     sys.`exit(cli.main());

@@ -1,7 +1,7 @@
 # Jaccit — Wednesday, November 4, 2026 demo checklist
 
 > **Local classroom prototype** — run only on localhost with sample data.
-> The tracker and applicant autofill are not full production workflows.
+> The applicant autofill is not a full production workflow.
 
 ## 1. Set up the demo Mac (before presenting)
 
@@ -63,10 +63,9 @@ dashboards) and requirements that need evidence (e.g. SQL).
 The tool does not invent experience or produce a finalized rewritten resume.
 
 **2:45–4:00: Tracker and Insights.**
-Click Tracker. Show the preloaded sample applications. Add one example with a
-company, title and application date. Change a status, open Insights, explore
-the status chart and response statistics, and export a CSV. Refresh resets the
-in-memory sample tracker; do not describe it as database-persisted yet.
+Click Tracker. Add an example with a company, title and application date.
+Change its status, refresh to show it was saved, open Insights, explore the status
+chart and response statistics, and export a CSV.
 
 **4:00–5:00: Profile and personalization.**
 Open Account → Profile. Show sector, target titles, location, salary, and
@@ -84,7 +83,7 @@ fallback. Network/API access may affect live search, so show this last.
 | Personalized job query | Backend database flow; API/LLM optional |
 | Autofill web page | Local sample form; no external submission |
 | Resume tailoring web page | Server-side text matching/review, not full rewrite |
-| Application tracker | Editable session sample; CSV export, not Turso |
+| Application tracker | Saved per user in the database; CSV export |
 | Multi-provider external jobs | API-dependent; do not rely on live calls |
 | Google OAuth | Integration exists; avoid as a demo dependency |
 | End-to-end form submissions | Not implemented |
