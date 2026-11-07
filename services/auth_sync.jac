@@ -77,7 +77,9 @@ def:pub get_test_user_session -> dict[str, any] {
 jacSignup(email, password) stores the address as a username, so a username holding
 an email counts as an email. Jac allows one account per identity value, but signup
 does not verify addresses: _find_app_user is what protects Google-owned rows.
-An SSO profile is user-editable, so its email counts only for a linked SSO account.
+
+Jac does not store the email from a Google sign-in, and users can edit their own
+profile, so a Google account is identified by its Jac user id and has no email here.
 """
 def _identity_from_account(
     user_id: str,
@@ -87,7 +89,7 @@ def _identity_from_account(
     res: dict[str, any] = {
         "user_id": user_id,
         "email": None,
-        "email_source": None,
+        "is_sso": bool(sso_accounts),
         "first_name": None,
         "last_name": None,
         "name": None
@@ -105,7 +107,6 @@ def _identity_from_account(
     }
     if found_email {
         res["email"] = found_email;
-        res["email_source"] = "identity";
     }
 
     profiles = (account.get("profile") or {}).get("sso") or {};
@@ -116,10 +117,6 @@ def _identity_from_account(
         data = profiles.get(str(linked.get("platform", "")));
         if not isinstance(data, dict) {
             continue;
-        }
-        if not res["email"] and data.get("email") and "@" in str(data["email"]) {
-            res["email"] = str(data["email"]).strip().lower();
-            res["email_source"] = "sso";
         }
         if not res["first_name"] and data.get("first_name") {
             res["first_name"] = str(data["first_name"]).strip();
@@ -162,24 +159,16 @@ def _verified_identity(token: str | None) -> dict[str, any] | None {
 
 """Find the app database row that belongs to this identity.
 
-A row bound to a Google account belongs to that account alone, because anyone can
-register a password account using an unclaimed address. For the same reason, an
-email from an SSO profile cannot claim a row that is not already bound to it.
+A Google account owns only the row bound to its Jac user id. A row bound to a Google
+account belongs to that account alone, because anyone can register a password account
+using an unclaimed address.
 """
 def _find_app_user(identity: dict[str, any], conn: any = None) -> dict[str, any] | None {
-    email = str(identity.get("email") or "");
     user_id = str(identity["user_id"]);
-    if identity.get("email_source") == "sso" {
-        bound = get_user_by_oauth_id(user_id, auth_provider="google", conn=conn);
-        if bound is not None {
-            return bound;
-        }
-        if get_user_by_email(email, conn=conn) is not None {
-            raise PermissionError("This email is already linked to another account.");
-        }
-        return None;
+    if identity.get("is_sso") and not identity.get("email") {
+        return get_user_by_oauth_id(user_id, auth_provider="google", conn=conn);
     }
-    row = get_user_by_email(email, conn=conn);
+    row = get_user_by_email(str(identity.get("email") or ""), conn=conn);
     if row and row.get("auth_provider") == "google" and row.get("oauth_id") and str(row["oauth_id"]) != user_id {
         raise PermissionError("This email is already linked to another account.");
     }
@@ -189,11 +178,15 @@ def _find_app_user(identity: dict[str, any], conn: any = None) -> dict[str, any]
 """Resolve the caller from a session token. This is the only source of user identity.
 
 Returns {"ok": True, "email", "oauth_id", "auth_provider", "app_user", ...} or
-{"ok": False, "error"}. Endpoints must not accept an email or user id from the client.
+{"ok": False, "error"}. Endpoints must not use an email or user id from the client to
+choose a user. "email" is "" for a Google user who has not completed onboarding.
 """
 def _resolve_caller(token: str | None, conn: any = None) -> dict[str, any] {
     identity = _verified_identity(token);
-    if identity is None or not identity.get("email") {
+    if identity is None {
+        return {"ok": False, "error": "Not authenticated."};
+    }
+    if not identity.get("email") and not identity.get("is_sso") {
         return {"ok": False, "error": "Not authenticated."};
     }
     if conn is None {
@@ -208,11 +201,11 @@ def _caller_from_identity(identity: dict[str, any], conn: any = None) -> dict[st
     } except PermissionError as e {
         return {"ok": False, "error": str(e)};
     }
-    is_sso = identity.get("email_source") == "sso";
+    is_sso = bool(identity.get("is_sso")) and not identity.get("email");
     return {
         **identity,
         "ok": True,
-        "email": str(app_user["email"]) if app_user else str(identity["email"]),
+        "email": str(app_user["email"]) if app_user else str(identity.get("email") or ""),
         "oauth_id": str(identity["user_id"]) if is_sso else None,
         "auth_provider": "google" if is_sso else "local",
         "app_user": app_user
@@ -230,6 +223,10 @@ def _public_user(user: dict[str, any] | None) -> dict[str, any] | None {
 }
 
 def _sync_caller(caller: dict[str, any], conn: any = None) -> dict[str, any] {
+    # A Google user gets a row during onboarding, once they provide an email.
+    if not caller.get("email") {
+        return {"ok": True, "user": None};
+    }
     try {
         user = sync_oauth_user(
             email=str(caller["email"]),
