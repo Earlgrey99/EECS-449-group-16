@@ -3,7 +3,7 @@ name: Applicant tools verification
 on:
   push:
     branches:
-      - feature/jaccit-web-autofill-tailoring
+      - main
   pull_request:
     branches:
       - main
