@@ -94,3 +94,23 @@ test "init_db adds the pay column to an existing applications table" {
     assert "pay" in columns;
     init_db(conn=conn);
 }
+
+test "tracker keeps job links, skips duplicates, and rejects unsafe links" {
+    conn = make_test_db();
+    uid = make_user("a@example.com", conn);
+    url = "https://jobs.example.com/1";
+    first = _add_for(uid, "Engineer", "Acme", "2026-11-04", job_url=url, conn=conn);
+    assert first["application"]["job_url"] == url;
+    assert "already_tracked" not in first;
+
+    same_url = _add_for(uid, "Software Engineer", "Acme Inc", "2026-11-05", job_url=url, conn=conn);
+    assert same_url["already_tracked"] is True;
+    same_job = _add_for(uid, "engineer", "ACME", "2026-11-05", conn=conn);
+    assert same_job["already_tracked"] is True;
+    different = _add_for(uid, "Engineer", "Acme", "2026-11-05", job_url="https://jobs.example.com/2", conn=conn);
+    assert "already_tracked" not in different;
+    assert len(_list_for(uid, conn=conn)["applications"]) == 2;
+
+    unsafe = _add_for(uid, "Analyst", "Beta", "2026-11-05", job_url="javascript:alert(1)", conn=conn);
+    assert unsafe["application"]["job_url"] == "";
+}

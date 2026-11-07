@@ -11,6 +11,7 @@ import from db {
     update_application
 }
 import from .auth_sync { _resolve_caller, _sync_caller }
+import from .jobs { _extract_salary_values }
 
 glob TRACKER_STATUSES: list[str] = ["Applied", "Interview", "Offer", "Rejected", "Withdrawn"];
 glob MAX_TEXT: int = 500;
@@ -33,6 +34,7 @@ def _to_row(app: dict[str, any]) -> dict[str, any] {
         "date": _display_date(app.get("applied_date")),
         "description": str(app.get("notes") or "None found"),
         "pay": int(app.get("pay") or 0),
+        "job_url": str(app.get("job_url") or ""),
         "resume": "None found",
         "cover_letter": "None found",
         "status": _clean_status(app.get("status"))
@@ -42,6 +44,32 @@ def _to_row(app: dict[str, any]) -> dict[str, any] {
 def _is_iso_date(value: str) -> bool {
     parts = value.split("-");
     return len(parts) == 3 and len(parts[0]) == 4 and all([part.isdigit() for part in parts]);
+}
+
+"""Keep only http(s) links, because the tracker page renders this as a link."""
+def _clean_url(job_url: any) -> str {
+    url = str(job_url or "").strip()[:MAX_TEXT];
+    return url if url.lower().startswith(("http://", "https://")) else "";
+}
+
+def _find_existing(
+    user_id: int,
+    role: str,
+    company: str,
+    job_url: str,
+    conn: any = None
+) -> dict[str, any] | None {
+    for app in list_applications_by_user(user_id, conn=conn) {
+        if job_url and str(app.get("job_url") or "") == job_url {
+            return app;
+        }
+        same_role = str(app.get("job_title") or "").lower() == role.lower();
+        same_company = str(app.get("company") or "").lower() == company.lower();
+        if same_role and same_company and (not job_url or not app.get("job_url")) {
+            return app;
+        }
+    }
+    return None;
 }
 
 def _list_for(user_id: int, conn: any = None) -> dict[str, any] {
@@ -57,6 +85,7 @@ def _add_for(
     description: str = "",
     pay: int | None = None,
     status: str = "Applied",
+    job_url: str = "",
     conn: any = None
 ) -> dict[str, any] {
     clean_role = str(role or "").strip()[:MAX_TEXT];
@@ -68,12 +97,18 @@ def _add_for(
     if pay is not None and int(pay) < 0 {
         return {"ok": False, "error": "Pay available must be a whole number."};
     }
+    clean_url = _clean_url(job_url);
+    existing = _find_existing(user_id, clean_role, clean_company, clean_url, conn=conn);
+    if existing is not None {
+        return {"ok": True, "application": _to_row(existing), "already_tracked": True};
+    }
     app = create_application(
         user_id=user_id,
         job_title=clean_role,
         company=clean_company,
         status=_clean_status(status),
         applied_date=clean_date,
+        job_url=clean_url or None,
         notes=str(description or "").strip()[:MAX_TEXT] or None,
         pay=int(pay) if pay is not None else None,
         conn=conn
@@ -140,13 +175,20 @@ def:protect add_tracker_application(
     applied_date: str,
     description: str,
     pay: int | None,
-    status: str
+    status: str,
+    job_url: str = "",
+    salary_text: str = ""
 ) -> dict[str, any] {
     found = _user_id_for(token);
     if not found["ok"] {
         return found;
     }
-    return _add_for(found["user_id"], role, company, applied_date, description, pay, status);
+    amount = pay;
+    if amount is None and salary_text {
+        values = _extract_salary_values(salary_text);
+        amount = int(max(values)) if values else None;
+    }
+    return _add_for(found["user_id"], role, company, applied_date, description, amount, status, job_url);
 }
 
 def:protect set_tracker_status(token: str, app_id: int, status: str) -> dict[str, any] {

@@ -19,6 +19,7 @@ import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from ..services.compatibility { get_resume_match_scores }
 import from ..services.locations { search_cities }
+import from ..services.tracker { add_tracker_application }
 import from ..lib.utils { format_salary, format_desc }
 
 glob ALL_CONTRACT_TYPES: list[str] = [
@@ -117,6 +118,8 @@ def:pub JobSearchFeed -> JsxElement {
     has did_load_jobs: bool = False;
     has match_rows: list[dict[str, any]] = [];
     has has_resume: bool = True;
+    has tracked_keys: list[str] = [];
+    has track_message: str = "";
 
     async can with entry {
         if did_load_jobs {
@@ -485,6 +488,35 @@ def:pub JobSearchFeed -> JsxElement {
         nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))), {"state": {"job": details}});
     }
 
+    def track_key(job: any) -> str {
+        return str(job.get("id", ""));
+    }
+
+    async def add_to_tracker(job: any) {
+        track_message = "";
+        today: any = Reflect.construct(Date, []);
+        try {
+            res: any = await add_tracker_application(
+                token=session_token(),
+                role=str(job.get("title", "")),
+                company=str(job.get("company", "")),
+                applied_date=str(today.toLocaleDateString("en-CA")),
+                description="",
+                pay=None,
+                status="Applied",
+                job_url=str(job.get("link") or job.get("id") or ""),
+                salary_text=str(job.get("salary") or "")
+            );
+            if res and res.get("ok") {
+                tracked_keys = tracked_keys + [track_key(job)];
+            } else {
+                track_message = str(res.get("error") if res else "Could not add this job to your tracker.");
+            }
+        } except Exception {
+            track_message = "Could not add this job to your tracker.";
+        }
+    }
+
     def toggle_selected_save {
         if sel is not None {
             toggle_save(sel);
@@ -810,6 +842,8 @@ def:pub JobSearchFeed -> JsxElement {
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
                                     <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
+                                    <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
+                                    {bool(track_message) and <p role="alert" className="text-sm text-destructive">{track_message}</p>}
                                 </div>
                             </CardContent>
                         </Card>}
