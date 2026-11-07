@@ -2,7 +2,14 @@
 import json,re
 from collections import Counter
 from pathlib import Path
-STOP=set("and the to for with from that this are you your our their have has will can into using use these those a an of on in at by as or is be we it job work team skills experience required preferred ability strong knowledge".split())
+STOP=set("""and the to for with from that this are you your our their have has will can into using use these those a an of on in at by as or is be we it
+job work team skills experience required preferred ability strong knowledge must need needs require requires requiring know knows looking seeking seek want wants who what when where why how
+not but all any each more most other some such than then them they was were been being had its also may should would could able about across after alongside before
+between both during including like new per plus via while within without etc role roles position candidate candidates company responsibilities requirements qualifications
+year years help helps support supports ensure build builds building create creates creating develop develops developing make makes making manage manages managing
+good great excellent small large fast relevant technologies technology environment based related various well high best day including ideal minimum working""".split())
+# Short skill names count only in the capitalization people write them, so "go to market" isn't Go.
+SHORT_SKILLS=re.compile(r"(?<![\w.+#-])(C|R|Go|AI|ML|QA|UI|UX|JS|TS)(?![\w+#&'/-])")
 def read_resume(path):
     p=Path(path).expanduser()
     if not p.is_file():raise FileNotFoundError(str(p))
@@ -19,7 +26,12 @@ def read_resume(path):
         return "\n".join(parts)
     raise ValueError("Resume must be .pdf, .docx, .txt, or .md")
 def tokens(s):
-    return [w for w in re.findall(r"[a-z][a-z0-9+#.\-]*",s.lower()) if len(w)>2 and w not in STOP]
+    words=[w.rstrip(".-") for w in re.findall(r"[a-z.][a-z0-9+#.\-]*",s.lower())]
+    found=[w for w in words if (len(w)>2 or w in ("c#","c+")) and w not in STOP]
+    found.extend(w.lower() for w in SHORT_SKILLS.findall(s))
+    return found
+def bullet_text(line):
+    return re.sub(r"^\s*[-\u2022*]\s*","",line).strip()
 def generate_tailored_markdown(resume,job_description,role="Target position"):
     if not resume.strip() or not job_description.strip():raise ValueError("Resume and job description must contain text")
     demands=Counter(tokens(job_description)); evidence=set(tokens(resume))
@@ -30,7 +42,7 @@ def generate_tailored_markdown(resume,job_description,role="Target position"):
     relevant=sorted(bullets,key=lambda line:sum(demands.get(w,0) for w in set(tokens(line))),reverse=True)[:6]
     report={"role":role,"verified_terms":found,"not_verified_in_resume":missing,"relevant_existing_bullets":relevant,"notice":"Only existing resume content is evidenced. Verify and approve all edits."}
     body=["# Resume tailoring review: "+role,"","## Verified skills and terminology",", ".join(found) if found else "No obvious matches found.","","## Requirements not verified in the resume","Review, do not add without supporting experience: "+(", ".join(missing) if missing else "None identified"),"","## Existing experience to consider highlighting"]
-    body.extend("- "+line for line in relevant)
+    body.extend("- "+bullet_text(line) for line in relevant)
     body.extend(["","## Original resume (unchanged)","",resume])
     return "\n".join(body)+"\n",report
 def export_tailoring(markdown,path):
