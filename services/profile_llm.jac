@@ -272,8 +272,29 @@ def _submit_profile(
     };
 }
 
+"""Pick the email to save for this caller.
+
+The caller's known email always wins. Only a Google user with no row yet supplies
+one, because Jac does not store it. It is contact data: their row is found by Jac
+user id, so the address grants no access and cannot claim someone else's row.
+"""
+def _email_for_caller(caller: dict[str, any], supplied: str, conn: any = None) -> dict[str, any] {
+    if caller.get("email") {
+        return {"ok": True, "email": str(caller["email"])};
+    }
+    clean = str(supplied or "").strip().lower();
+    if "@" not in clean or " " in clean {
+        return {"ok": False, "error": "Please enter your email."};
+    }
+    if get_user_by_email(clean, conn=conn) is not None {
+        return {"ok": False, "error": "This email is already linked to another account."};
+    }
+    return {"ok": True, "email": clean};
+}
+
 def:protect submit_profile_and_generate_query(
     token: str,
+    email: str = "",
     first_name: str = "",
     last_name: str = "",
     location: str = "Remote",
@@ -288,8 +309,12 @@ def:protect submit_profile_and_generate_query(
     if not caller["ok"] {
         return caller;
     }
+    chosen = _email_for_caller(caller, email);
+    if not chosen["ok"] {
+        return chosen;
+    }
     return _submit_profile(
-        email=caller["email"],
+        email=chosen["email"],
         first_name=first_name,
         last_name=last_name,
         location=location,

@@ -54,6 +54,7 @@ def:pub UserProfilePage -> JsxElement {
     nav = useNavigate();
 
     has email: str = "";
+    has email_locked: bool = False;
     has first_name: str = "";
     has last_name: str = "";
     has locations: list[str] = ["Remote"];
@@ -77,7 +78,7 @@ def:pub UserProfilePage -> JsxElement {
     has step: int = 1;
 
     def step1_valid -> bool {
-        return bool(first_name.strip()) and len(locations) > 0;
+        return bool(first_name.strip()) and bool(email.strip()) and len(locations) > 0;
     }
 
     def step2_valid -> bool {
@@ -135,6 +136,7 @@ def:pub UserProfilePage -> JsxElement {
                 email_val = str(u.get("email", "") or "");
                 if email_val and "@" in email_val {
                     email = email_val;
+                    email_locked = True;
                 }
 
                 loaded_fn = str(u.get("first_name", "") or "");
@@ -213,6 +215,7 @@ def:pub UserProfilePage -> JsxElement {
 
     def handle_first_name(e: ChangeEvent) { first_name = e.target.value; }
     def handle_last_name(e: ChangeEvent) { last_name = e.target.value; }
+    def handle_email(e: ChangeEvent) { email = e.target.value; }
     def handle_job_titles(e: ChangeEvent) { job_titles = e.target.value; }
     def handle_salary(e: ChangeEvent) { salary_min = e.target.value; }
 
@@ -314,6 +317,10 @@ def:pub UserProfilePage -> JsxElement {
             message = "Please enter your first name.";
             return;
         }
+        if not email.strip() {
+            message = "Please enter your email.";
+            return;
+        }
         if len(locations) == 0 {
             locations = ["Remote"];
         }
@@ -346,6 +353,7 @@ def:pub UserProfilePage -> JsxElement {
         try {
             res = await submit_profile_and_generate_query(
                 token=tok,
+                email=email.strip(),
                 first_name=first_name.strip(),
                 last_name=last_name.strip(),
                 location=loc_str,
@@ -423,14 +431,15 @@ def:pub UserProfilePage -> JsxElement {
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-medium text-foreground">Email Address (from your account)</label>
+                                <label className="text-xs font-medium text-foreground">Email Address *</label>
                                 <Input
                                     type="email"
                                     placeholder="ada@example.com"
                                     value={email}
-                                    readOnly={True}
-                                    aria-readonly="true"
-                                    className="h-10 bg-muted text-muted-foreground"
+                                    onChange={handle_email}
+                                    readOnly={email_locked}
+                                    required
+                                    className={"h-10 " + ("bg-muted text-muted-foreground" if email_locked else "bg-background")}
                                 />
                             </div>
 
