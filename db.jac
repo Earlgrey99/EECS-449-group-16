@@ -157,12 +157,17 @@ def init_db(conn: any = None) {
             status TEXT DEFAULT 'applied',
             applied_date TEXT,
             notes TEXT,
+            pay INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE SET NULL
         );
     """);
+    application_columns = db_conn.execute("PRAGMA table_info(applications);").fetchall();
+    if not any(column[1] == "pay" for column in application_columns) {
+        db_conn.execute("ALTER TABLE applications ADD COLUMN pay INTEGER;");
+    }
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_user ON applications(user_id);");
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);");
 
@@ -733,15 +738,16 @@ def create_application(
     status: str = "applied",
     applied_date: str | None = None,
     notes: str | None = None,
+    pay: int | None = None,
     conn: any = None
 ) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("""
         INSERT INTO applications (
-            user_id, job_title, company, resume_id, job_url, status, applied_date, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, job_title, company, resume_id, job_url, status, applied_date, notes));
+            user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay));
     db_conn.commit();
     app_id = cur.lastrowid;
     app = get_application_by_id(app_id, conn=db_conn);

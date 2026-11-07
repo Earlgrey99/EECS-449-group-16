@@ -1,4 +1,4 @@
-glob LOGO_URL: str = "/compiled/assets/launchpad-logo.png";
+glob LOGO_URL: str = "/static/assets/launchpad-logo.png";
 
 def:pub BrandMark(name: str, inverted: bool = False) -> JsxElement {
     return <div className="flex items-center gap-2">

@@ -1,9 +1,8 @@
-import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate, jacLogout }
+import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     Search01Icon,
     Bookmark01Icon,
-    Logout01Icon,
     SparklesIcon,
     FilterHorizontalIcon,
     CheckmarkCircle02Icon,
@@ -124,13 +123,9 @@ def:pub JobSearchFeed -> JsxElement {
             return;
         }
         did_load_jobs = True;
-        tok: str = "";
-        try {
-            tok = str(localStorage.getItem("jac_token") or "");
-        } except Exception {}
         tailored_res: any = None;
         try {
-            tailored_res = await get_user_tailored_jobs(token=tok);
+            tailored_res = await get_user_tailored_jobs(token=session_token());
         } except Exception {}
 
         init_jobs: list[dict[str, any]] = [];
@@ -197,18 +192,29 @@ def:pub JobSearchFeed -> JsxElement {
         tailored_jobs = init_jobs;
         loading = False;
 
-        # Score every job against the resume saved in the user's profile.
-        # This runs after the jobs are on screen, so the badges appear a
-        # moment later instead of slowing down the page.
+        await load_scores(init_jobs);
+    }
+
+    def session_token -> str {
+        try {
+            return str(localStorage.getItem("jac_token") or "");
+        } except Exception {
+            return "";
+        }
+    }
+
+    # Score jobs against the resume saved in the user's profile. This runs after
+    # the jobs are on screen, so the badges appear a moment later instead of
+    # slowing down the page. A job's score doesn't change, so rows accumulate.
+    async def load_scores(to_score: list[dict[str, any]]) {
         match_res: any = None;
         try {
-            match_res = await get_resume_match_scores(jobs=init_jobs, token=tok);
+            match_res = await get_resume_match_scores(jobs=to_score, token=session_token());
         } except Exception {}
         if match_res and match_res.get("ok") {
             has_resume = bool(match_res.get("has_resume"));
-            if match_res.get("scores") {
-                match_rows = match_res.get("scores");
-            }
+            new_rows: list[dict[str, any]] = match_res.get("scores") or [];
+            match_rows = new_rows + match_rows;
         }
     }
 
@@ -369,6 +375,7 @@ def:pub JobSearchFeed -> JsxElement {
             selected_id = "";
         }
         searching = False;
+        await load_scores(jobs);
     }
 
     def reset_to_tailored {
@@ -399,6 +406,13 @@ def:pub JobSearchFeed -> JsxElement {
         company_filter = "";
         source_filter = "all";
         city_dropdown_open = False;
+    }
+
+    def clear_and_show_recommendations {
+        clear_filters();
+        if is_custom_search {
+            reset_to_tailored();
+        }
     }
 
     def matches(j: dict[str, any]) -> bool {
@@ -463,6 +477,12 @@ def:pub JobSearchFeed -> JsxElement {
         } else {
             saved_ids = saved_ids + [jid];
         }
+    }
+
+    # Pass the job along, because external listings aren't in the built-in job list.
+    def apply_to(job: any) {
+        details = {"title": str(job.get("title", "")), "desc": str(job.get("desc", "")), "tags": str(job.get("tags", ""))};
+        nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))), {"state": {"job": details}});
     }
 
     def toggle_selected_save {
@@ -721,8 +741,7 @@ def:pub JobSearchFeed -> JsxElement {
                         <EmptyDescription className="text-center max-w-md">Try adjusting your search terms, removing filters, or searching remote roles.</EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent className="flex flex-row flex-wrap items-center justify-center gap-2">
-                        <Button variant="outline" onClick={clear_filters}>Clear filters</Button>
-                        {is_custom_search and <Button onClick={reset_to_tailored}>Reset to Profile Matches</Button>}
+                        <Button variant="outline" onClick={clear_and_show_recommendations}>Clear filters</Button>
                     </EmptyContent>
                 </Empty>}
 
@@ -789,11 +808,8 @@ def:pub JobSearchFeed -> JsxElement {
                                     }}
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
+                                    <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
-                                        <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
-                                    </Button>
                                 </div>
                             </CardContent>
                         </Card>}

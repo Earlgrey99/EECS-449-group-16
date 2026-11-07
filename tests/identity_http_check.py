@@ -41,6 +41,10 @@ PROTECTED = {
     "get_resume_match_scores": {"jobs": [], "token": "x"},
     "submit_profile_and_generate_query": {"token": "x", "first_name": "X"},
     "sync_user_session": {"token": "x"},
+    "list_tracker_applications": {"token": "x"},
+    "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
+    "set_tracker_status": {"token": "x", "app_id": 1, "status": "Offer"},
+    "remove_tracker_application": {"token": "x", "app_id": 1},
 }
 failures: list[str] = []
 
@@ -146,6 +150,24 @@ def main() -> int:
     http("/function/submit_profile_and_generate_query", {"token": bob, "email": alice_email, "first_name": "Mallory"}, bob)
     _, payload, raw = http("/function/get_user_profile_data", {"token": alice}, alice)
     check("another user cannot overwrite the profile", (result(payload).get("user") or {}).get("first_name") == "Alice", raw[:200])
+
+    # Tracker rows stay with their owner.
+    _, payload, raw = http("/function/add_tracker_application", {
+        "token": alice, "role": "Engineer", "company": "Acme", "applied_date": "2026-11-04",
+        "description": "", "pay": None, "status": "Interview",
+    }, alice)
+    app_id = (result(payload).get("application") or {}).get("id")
+    check("user can save a tracker application", bool(app_id), raw[:200])
+    _, _, raw = http("/function/list_tracker_applications", {"token": bob}, bob)
+    check("another user cannot list the application", "Acme" not in raw, raw[:200])
+    for fn, body in (("set_tracker_status", {"status": "Rejected"}), ("remove_tracker_application", {})):
+        _, payload, raw = http(f"/function/{fn}", {"token": bob, "app_id": app_id, **body}, bob)
+        check(f"another user cannot use {fn}", result(payload).get("ok") is False, raw[:200])
+    _, payload, raw = http("/function/set_tracker_status", {"token": alice, "app_id": app_id, "status": "Offer"}, alice)
+    check("owner's status change saves the chosen status", (result(payload).get("application") or {}).get("status") == "Offer", raw[:200])
+    _, payload, raw = http("/function/list_tracker_applications", {"token": alice}, alice)
+    rows = result(payload).get("applications") or []
+    check("the application persists with its status", len(rows) == 1 and rows[0]["status"] == "Offer", raw[:200])
 
     # Forged and look-alike identities.
     claims = {"email": alice_email, "sub": alice_email, "user_id": alice_email, "exp": 4102444800}
