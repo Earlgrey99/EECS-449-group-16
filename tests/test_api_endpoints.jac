@@ -1,6 +1,6 @@
 """Unit and integration tests for multi-provider API endpoints and unified format."""
 
-import from lib.utils { format_salary, format_desc }
+import from lib.utils { format_salary, format_desc, is_jooble_job, get_jooble_link }
 
 import json;
 import os;
@@ -447,11 +447,23 @@ test "job listing salary and description formatting and logo extraction" {
     assert format_salary("") == "";
     assert format_salary(None) == "";
 
-    # 2. Description formatting (HTML preservation and plain text newline handling)
+    # 2. Description formatting (HTML preservation, removal of &nbsp; artifacts, and plain text newline handling)
     html_desc = "<p>Engineering role &nbsp; <b>Senior</b></p>";
-    assert format_desc(html_desc) == html_desc;
+    formatted = format_desc(html_desc);
+    assert "&nbsp;" not in formatted;
+    assert formatted == "<p>Engineering role <b>Senior</b></p>";
     plain_desc = "Line 1\nLine 2\nLine 3";
     assert format_desc(plain_desc) == "Line 1<br />Line 2<br />Line 3";
+
+    # Jooble listing identification and description link helpers
+    assert is_jooble_job({"source": "jooble", "link": "https://jooble.org/desc/123"}) is True;
+    assert is_jooble_job({"source": "Jooble", "link": ""}) is True;
+    assert is_jooble_job({"link": "https://jooble.org/desc/example"}) is True;
+    assert is_jooble_job({"source": "himalayas", "link": "https://himalayas.app/jobs/123"}) is False;
+    assert is_jooble_job({"source": "local"}) is False;
+    assert get_jooble_link({"source": "jooble", "link": "https://jooble.org/desc/123"}) == "https://jooble.org/desc/123";
+    assert get_jooble_link({"source": "jooble", "id": "999"}) == "https://jooble.org/desc/999";
+    assert get_jooble_link({"source": "jooble"}) == "https://jooble.org";
 
     # 3. Logo extraction across providers
     jooble_with_logo = normalize_jooble_job({"id": "1", "company_logo": "https://img.jooble.org/logo.png"});

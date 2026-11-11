@@ -1,9 +1,8 @@
-import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate, jacLogout }
+import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     Search01Icon,
     Bookmark01Icon,
-    Logout01Icon,
     SparklesIcon,
     FilterHorizontalIcon,
     CheckmarkCircle02Icon,
@@ -84,6 +83,36 @@ def:pub JobCard(
             </div>
         </CardContent>
     </Card>;
+}
+
+def is_jooble_job(j: dict[str, any] | None = None) -> bool {
+    if not j {
+        return False;
+    }
+    src = str(j.get('source') or j.get('site') or '').strip().lower();
+    if src == 'jooble' {
+        return True;
+    }
+    link = str(j.get('link') or '').strip().lower();
+    if 'jooble.org' in link or 'jooble.' in link {
+        return True;
+    }
+    return False;
+}
+
+def get_jooble_link(j: dict[str, any] | None = None) -> str {
+    if not j {
+        return 'https://jooble.org';
+    }
+    link = str(j.get('link') or '').strip();
+    if link {
+        return link;
+    }
+    jid = str(j.get('id') or '').strip();
+    if jid {
+        return 'https://jooble.org/desc/' + jid;
+    }
+    return 'https://jooble.org';
 }
 
 def:pub JobSearchFeed -> JsxElement {
@@ -778,7 +807,19 @@ def:pub JobSearchFeed -> JsxElement {
                                     <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match.get("matched", "")) or "none")}</p>
                                     <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match.get("missing", "")) or "none")}</p>
                                 </div>}
-                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 whitespace-pre-wrap">{str(sel.get("desc", "")).replace("<br />", "\n").replace("<br>", "\n").replace("</p>", "\n").replace("<p>", "")}</div>
+                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_a]:text-primary [&_a]:underline" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
+                                {is_jooble_job(sel) and <div className="rounded-lg border border-border/80 bg-muted/40 p-3 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <span className="text-xs text-muted-foreground">Listing from Jooble includes a summary snippet only.</span>
+                                    <a
+                                        href={get_jooble_link(sel)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline shrink-0"
+                                    >
+                                        <span>View full job description on Jooble</span>
+                                        <span aria-hidden="true">&rarr;</span>
+                                    </a>
+                                </div>}
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
@@ -787,9 +828,15 @@ def:pub JobSearchFeed -> JsxElement {
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
                                     <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
-                                        <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
-                                    </Button>
+                                    {is_jooble_job(sel) and <a
+                                        href={get_jooble_link(sel)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-muted hover:text-accent-foreground"
+                                    >
+                                        <span>Full description</span>
+                                        <span aria-hidden="true">&rarr;</span>
+                                    </a>}
                                 </div>
                             </CardContent>
                         </Card>}
