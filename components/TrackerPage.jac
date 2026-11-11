@@ -1,12 +1,20 @@
+import from "@jac/runtime" { jacIsLoggedIn, Navigate }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
+import from ..services.tracker {
+    list_tracker_applications,
+    add_tracker_application,
+    set_tracker_status,
+    remove_tracker_application
+}
 
 glob TRACKER_STATUSES: list[str] = ["Applied", "Interview", "Offer", "Rejected", "Withdrawn"];
 
 def:pub TrackerRow(
     role: str,
     company: str,
+    job_url: str,
     applied_date: str,
     description: str,
     pay: str,
@@ -21,7 +29,10 @@ def:pub TrackerRow(
     }
 
     return <tr className="border-b last:border-b-0 hover:bg-muted/30">
-        <td className="whitespace-nowrap px-4 py-3.5 font-medium text-foreground">{company}</td>
+        <td className="whitespace-nowrap px-4 py-3.5 font-medium text-foreground">
+            {bool(job_url) and <a href={job_url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-primary">{company}</a>}
+            {(not job_url) and <span>{company}</span>}
+        </td>
         <td className="whitespace-nowrap px-4 py-3.5 text-sm">{role}</td>
         <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{applied_date}</td>
         <td className="max-w-56 truncate px-4 py-3.5 text-sm text-muted-foreground" title={description}>{description}</td>
@@ -53,14 +64,14 @@ def:pub TrackerRow(
 }
 
 def:pub TrackerPage() -> JsxElement {
-    has applications: list[dict[str, str | int]] = [
-        {"id": 1, "role": "Product Designer", "company": "Linear", "date": "10-28-2026", "description": "Product design role", "pay": 125000, "resume": "None found", "cover_letter": "None found", "status": "Interview"},
-        {"id": 2, "role": "UX Designer", "company": "Figma", "date": "10-25-2026", "description": "Design systems and collaboration", "pay": 118000, "resume": "None found", "cover_letter": "None found", "status": "Applied"},
-        {"id": 3, "role": "Product Designer", "company": "Notion", "date": "10-21-2026", "description": "Workspace product design", "pay": 132000, "resume": "None found", "cover_letter": "None found", "status": "Offer"},
-        {"id": 4, "role": "Visual Designer", "company": "Vercel", "date": "10-17-2026", "description": "Visual brand and web design", "pay": 110000, "resume": "None found", "cover_letter": "None found", "status": "Rejected"},
-        {"id": 5, "role": "Product Designer", "company": "Stripe", "date": "10-14-2026", "description": "Payments product design", "pay": 140000, "resume": "None found", "cover_letter": "None found", "status": "Interview"},
-        {"id": 6, "role": "Design Intern", "company": "Webflow", "date": "10-10-2026", "description": "Product design internship", "pay": 72000, "resume": "None found", "cover_letter": "None found", "status": "Applied"},
-    ];
+    if not jacIsLoggedIn() {
+        return <Navigate to="/login" replace={True} />;
+    }
+
+    has applications: list[dict[str, str | int]] = [];
+    has loading: bool = True;
+    has action_error: str = "";
+    has did_load: bool = False;
     has current_view: str = "table";
     has show_form: bool = False;
     has new_role: str = "";
@@ -103,53 +114,92 @@ def:pub TrackerPage() -> JsxElement {
         return len([app for app in applications if str(app["status"]) == status]);
     }
 
-    def set_status(app_id: int, status: str) {
-        updated: list[dict[str, str | int]] = [];
-        for app in applications {
-            if int(app["id"]) == app_id {
-                updated.append({**app, "status": status});
-            } else {
-                updated.append(app);
-            }
+    def session_token -> str {
+        try {
+            return str(localStorage.getItem("jac_token") or "");
+        } except Exception {
+            return "";
         }
-        applications = updated;
     }
 
-    def remove_application(app_id: int) {
-        applications = [app for app in applications if int(app["id"]) != app_id];
-    }
-
-    def add_application() {
-        if not new_role.strip() or not new_company.strip() or not new_date {
-            form_error = "Company, job title, and application date are required.";
+    async can with entry {
+        if did_load {
             return;
         }
-        date_parts = new_date.split("-");
-        if len(date_parts) != 3 {
-            form_error = "Enter an application date.";
+        did_load = True;
+        try {
+            res: any = await list_tracker_applications(token=session_token());
+            if res and res.get("ok") {
+                loaded: any = res.get("applications");
+                applications = loaded;
+            } else {
+                action_error = str(res.get("error") if res else "Could not load your applications.");
+            }
+        } except Exception {
+            action_error = "Could not load your applications.";
+        }
+        loading = False;
+    }
+
+    async def set_status(app_id: int, selected_status: str) {
+        action_error = "";
+        try {
+            res: any = await set_tracker_status(token=session_token(), app_id=app_id, status=selected_status);
+            if res and res.get("ok") {
+                applications = [{**app, "status": selected_status} if int(app["id"]) == app_id else app for app in applications];
+            } else {
+                action_error = str(res.get("error") if res else "Could not update the status.");
+            }
+        } except Exception {
+            action_error = "Could not update the status.";
+        }
+    }
+
+    async def remove_application(app_id: int) {
+        action_error = "";
+        try {
+            res: any = await remove_tracker_application(token=session_token(), app_id=app_id);
+            if res and res.get("ok") {
+                applications = [app for app in applications if int(app["id"]) != app_id];
+            } else {
+                action_error = str(res.get("error") if res else "Could not remove the application.");
+            }
+        } except Exception {
+            action_error = "Could not remove the application.";
+        }
+    }
+
+    async def add_application() {
+        if not new_role.strip() or not new_company.strip() or not new_date {
+            form_error = "Company, job title, and application date are required.";
             return;
         }
         if new_pay and not new_pay.isdigit() {
             form_error = "Pay available must be a whole number.";
             return;
         }
-        next_id = 1;
-        for app in applications {
-            if int(app["id"]) >= next_id {
-                next_id = int(app["id"]) + 1;
+        try {
+            res: any = await add_tracker_application(
+                token=session_token(),
+                role=new_role.strip(),
+                company=new_company.strip(),
+                applied_date=new_date,
+                description=new_description.strip(),
+                pay=int(new_pay) if new_pay else None,
+                status=new_status
+            );
+            if not res or not res.get("ok") {
+                form_error = str(res.get("error") if res else "Could not save the application.");
+                return;
             }
+            added: any = res.get("application");
+            if not res.get("already_tracked") {
+                applications = [added] + applications;
+            }
+        } except Exception {
+            form_error = "Could not save the application.";
+            return;
         }
-        applications = applications + [{
-            "id": next_id,
-            "role": new_role.strip(),
-            "company": new_company.strip(),
-            "description": new_description.strip() if new_description.strip() else "None found",
-            "pay": int(new_pay) if new_pay else 0,
-            "resume": "None found",
-            "cover_letter": "None found",
-            "status": new_status,
-            "date": date_parts[1] + "-" + date_parts[2] + "-" + date_parts[0]
-        }];
         new_role = "";
         new_company = "";
         new_date = "";
@@ -168,7 +218,9 @@ def:pub TrackerPage() -> JsxElement {
     def handle_new_status(e: ChangeEvent) { new_status = e.target.value; }
 
     def csv_cell(value: str) -> str {
-        return "\"" + value.replace("\"", "\"\"") + "\"";
+        # A leading =, +, -, or @ would run as a formula in a spreadsheet.
+        safe = "'" + value if value[:1] in ["=", "+", "-", "@"] else value;
+        return "\"" + safe.replace("\"", "\"\"") + "\"";
     }
 
     csv_rows: list[str] = ["Company name,Job title,Date Applied,Description,Pay available,Resume PDF used,Cover letter,Status"];
@@ -228,7 +280,7 @@ def:pub TrackerPage() -> JsxElement {
                         </Button>
                     </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Fields follow the existing table_Sheet export; this sample workspace resets when the page reloads.</p>
+                {bool(action_error) and <p role="alert" className="text-sm text-destructive">{action_error}</p>}
             </header>
 
             <div className="flex w-fit items-center gap-1 rounded-xl border bg-card p-1 shadow-sm" role="tablist" aria-label="Tracker views">
@@ -282,7 +334,7 @@ def:pub TrackerPage() -> JsxElement {
                         <h2 className="font-semibold">All applications</h2>
                         <p className="text-sm text-muted-foreground">{str(total)} opportunities in your tracker</p>
                     </div>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Updated live</span>
+                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Saved to your account</span>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] border-collapse text-left">
@@ -305,17 +357,18 @@ def:pub TrackerPage() -> JsxElement {
                                     key={str(app["id"])}
                                     role={str(app["role"])}
                                     company={str(app["company"])}
+                                    job_url={str(app.get("job_url") or "")}
                                     applied_date={str(app["date"])}
                                     description={str(app["description"])}
                                     pay={str(app["pay"])}
                                     resume={str(app["resume"])}
                                     cover_letter={str(app["cover_letter"])}
                                     status={str(app["status"])}
-                                    onStatusChange={lambda (new_status: str) { set_status(int(app["id"]), new_status); }}
+                                    onStatusChange={lambda (selected: str) { set_status(int(app["id"]), selected); }}
                                     onRemove={lambda { remove_application(int(app["id"])); }}
                                 />
                             }}
-                            {total == 0 and <tr><td colspan="9" className="px-4 py-12 text-center text-sm text-muted-foreground">No applications yet. Add one to start building your tracker.</td></tr>}
+                            {total == 0 and <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-muted-foreground">{("Loading your applications..." if loading else "No applications yet. Add one to start building your tracker.")}</td></tr>}
                         </tbody>
                     </table>
                 </div>

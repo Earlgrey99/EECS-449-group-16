@@ -19,10 +19,11 @@ import from services.locations { search_cities }
 import from services.profile_llm {
     generate_fallback_query,
     generate_job_search_params,
-    submit_profile_and_generate_query,
-    get_user_profile_data
+    _submit_profile,
+    _load_profile,
+    _save_contact
 }
-import from services.jobs { get_user_tailored_jobs }
+import from services.jobs { _tailored_jobs_for }
 
 def make_test_db -> any {
     conn = sqlite3.connect(":memory:");
@@ -190,7 +191,7 @@ test "submit_profile_and_generate_query saves resume and caches query in databas
         register_user(name="Onboarding User", email=test_user_email, password="password123", conn=conn);
     } except Exception {}
 
-    result = submit_profile_and_generate_query(
+    result = _submit_profile(
         email=test_user_email,
         first_name="Onboarding",
         last_name="User",
@@ -216,7 +217,7 @@ test "submit_profile_and_generate_query saves resume and caches query in databas
     assert user["onboarding_completed"] == 1;
 
     # Verify profile data endpoint
-    prof_data = get_user_profile_data(email=test_user_email, conn=conn);
+    prof_data = _load_profile(email=test_user_email, conn=conn);
     assert prof_data["ok"] is True;
     assert prof_data["onboarding_completed"] is True;
     assert prof_data["cached_query"] is not None;
@@ -226,7 +227,7 @@ test "submit_profile_and_generate_query saves resume and caches query in databas
 test "submit_profile_and_generate_query auto-provisions non-existent user instead of erroring" {
     conn = make_test_db();
     brand_new_email = "auto_provisioned_google_user@example.com";
-    result = submit_profile_and_generate_query(
+    result = _submit_profile(
         email=brand_new_email,
         first_name="Auto",
         last_name="Provisioned",
@@ -255,7 +256,7 @@ test "submit_profile_and_generate_query auto-provisions non-existent user instea
 }
 
 test "get_user_profile_data returns synthetic profile for unknown user without failing" {
-    prof_data = get_user_profile_data(email=None, token="");
+    prof_data = _load_profile();
     assert prof_data["ok"] is True;
     assert prof_data["user"] is not None;
     assert prof_data["onboarding_completed"] is False;
@@ -269,7 +270,7 @@ test "get_user_tailored_jobs retrieves tailored jobs for onboarded user" {
     } except Exception {}
 
     # Submit profile to cache query
-    submit_profile_and_generate_query(
+    _submit_profile(
         email=email,
         first_name="Tailored",
         last_name="User",
@@ -282,7 +283,7 @@ test "get_user_tailored_jobs retrieves tailored jobs for onboarded user" {
     );
 
     # Retrieve tailored jobs
-    tailored = get_user_tailored_jobs(email=email, conn=conn);
+    tailored = _tailored_jobs_for(email, conn=conn);
     assert tailored["ok"] is True;
     assert tailored["tailored"] is True;
     assert tailored["query"] is not None;
@@ -295,7 +296,7 @@ test "multi-select contract types, locations, and sectors are saved and retrieva
     email = "multiselect_user@example.com";
     register_user(name="Multi User", email=email, password="password123", conn=conn);
 
-    res = submit_profile_and_generate_query(
+    res = _submit_profile(
         email=email,
         first_name="Multi",
         last_name="User",
@@ -308,7 +309,7 @@ test "multi-select contract types, locations, and sectors are saved and retrieva
     );
 
     assert res["ok"] is True;
-    prof_data = get_user_profile_data(email=email, conn=conn);
+    prof_data = _load_profile(email=email, conn=conn);
     assert prof_data["ok"] is True;
     u = prof_data["user"];
     assert "Remote" in u["location"] and "Chicago" in u["location"];
@@ -321,7 +322,7 @@ test "get_user_tailored_jobs matches listings with multi-select contract types a
     email = "multi_tailored@example.com";
     register_user(name="Multi Tailored", email=email, password="password123", conn=conn);
 
-    submit_profile_and_generate_query(
+    _submit_profile(
         email=email,
         first_name="Multi",
         last_name="Tailored",
@@ -333,7 +334,80 @@ test "get_user_tailored_jobs matches listings with multi-select contract types a
         conn=conn
     );
 
-    tailored = get_user_tailored_jobs(email=email, conn=conn);
+    tailored = _tailored_jobs_for(email, conn=conn);
     assert tailored["ok"] is True;
     assert len(tailored["jobs"]) > 0;
+}
+
+test "get_user_profile_data retains uploaded resume information on refresh and update" {
+    conn = make_test_db();
+    email = "resume_refresh_user@example.com";
+    register_user(name="Resume User", email=email, password="password123", conn=conn);
+
+    # Submit profile with uploaded resume
+    _submit_profile(
+        email=email,
+        first_name="Resume",
+        last_name="User",
+        location="Remote",
+        sector="Technology & Software",
+        job_titles="Software Engineer",
+        salary_min=100000,
+        contract_type="Full-time",
+        resume_title="My_Resume_2026.pdf",
+        resume_content="data:text/plain;base64,U2tpbGxzOiBQeXRob24sIFJlYWN0LCBTUUw=",
+        conn=conn
+    );
+
+    # Profile fetch on refresh
+    prof_data = _load_profile(email=email, conn=conn);
+    assert prof_data["ok"] is True;
+    assert prof_data["latest_resume"] is not None;
+    assert prof_data["latest_resume"]["title"] == "My_Resume_2026.pdf";
+
+    # Re-save profile without uploading a new file (e.g. updating location only)
+    _submit_profile(
+        email=email,
+        first_name="Resume",
+        last_name="User",
+        location="Remote, Seattle, WA",
+        sector="Technology & Software",
+        job_titles="Software Engineer",
+        salary_min=105000,
+        contract_type="Full-time",
+        resume_title=None,
+        resume_content=None,
+        conn=conn
+    );
+
+    # Verify resume is still retained on subsequent fetch
+    prof_data_after = _load_profile(email=email, conn=conn);
+    assert prof_data_after["ok"] is True;
+    assert prof_data_after["latest_resume"] is not None;
+    assert prof_data_after["latest_resume"]["title"] == "My_Resume_2026.pdf";
+}
+
+test "contact details are saved, cleared, and validated" {
+    conn = make_test_db();
+    email = "contact@example.com";
+    uid = int(register_user(name="Contact", email=email, password="password123", conn=conn)["id"]);
+
+    saved = _save_contact(uid, "(555) 555-0100", " Ann Arbor ", "https://linkedin.com/in/a", "https://github.com/a", "https://a.example", conn=conn);
+    assert saved["ok"] is True;
+    assert saved["user"]["phone"] == "(555) 555-0100";
+    assert saved["user"]["city"] == "Ann Arbor";
+    assert saved["user"]["linkedin"] == "https://linkedin.com/in/a";
+    assert "password_hash" not in saved["user"];
+    loaded = _load_profile(email=email, conn=conn)["user"];
+    assert loaded["github"] == "https://github.com/a";
+    assert loaded["portfolio"] == "https://a.example";
+
+    assert _save_contact(uid, "call me", "", "", "", "", conn=conn)["ok"] is False;
+    assert _save_contact(uid, "", "", "javascript:alert(1)", "", "", conn=conn)["ok"] is False;
+    assert _save_contact(uid, "", "", "", "github.com/a", "", conn=conn)["ok"] is False;
+    assert _load_profile(email=email, conn=conn)["user"]["phone"] == "(555) 555-0100";
+
+    cleared = _save_contact(uid, "", "", "", "", "", conn=conn)["user"];
+    assert cleared["phone"] == "";
+    assert cleared["linkedin"] == "";
 }

@@ -1,4 +1,4 @@
-"""Headless browser smoke walkthrough for the Jaccit classroom demonstration.
+"""Headless browser smoke walkthrough for the Launchpad classroom demonstration.
 
 Requires a running Jac server in the TEST profile and Playwright Chromium.
 Use sample data only; this does not submit any external application.
@@ -6,6 +6,7 @@ Use sample data only; this does not submit any external application.
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -59,8 +60,27 @@ def main() -> int:
 
             page.goto(f"{BASE}/tracker", wait_until="domcontentloaded", timeout=30000)
             page.get_by_role("heading", name="Application tracker").wait_for(timeout=25000)
+            company = "Smoke Test Co " + secrets.token_hex(3)
+            page.get_by_role("button", name="Add application").click()
+            page.get_by_label("Job title").fill("Engineer")
+            page.get_by_label("Company").fill(company)
+            page.get_by_label("Applied date").fill("2026-11-04")
+            page.get_by_role("button", name="Save application").click()
+            status = page.get_by_label("Status for " + company)
+            status.wait_for(timeout=15000)
+            with page.expect_response("**/function/set_tracker_status", timeout=15000):
+                status.select_option("Offer")
+            page.reload(wait_until="domcontentloaded")
+            status = page.get_by_label("Status for " + company)
+            status.wait_for(timeout=25000)
+            assert status.input_value() == "Offer", "Tracker did not save the chosen status"
+            print("PASS: Tracker saves applications and status across a reload")
             page.get_by_role("tab", name="Insights").click()
             print("PASS: Tracker and insights")
+
+            page.get_by_role("tab", name="Table").click()
+            page.get_by_role("button", name="Remove Engineer at " + company).click()
+            status.wait_for(state="detached", timeout=10000)
 
             page.goto(f"{BASE}/me", wait_until="domcontentloaded", timeout=30000)
             page.get_by_text("Personal Information").wait_for(timeout=25000)

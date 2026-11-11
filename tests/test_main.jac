@@ -1,1 +1,1 @@
-import from main { greet }
+import from cli { greet }

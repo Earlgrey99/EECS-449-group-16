@@ -6,7 +6,7 @@ import json;
 import os;
 import urllib.request;
 import from unittest.mock { MagicMock, patch }
-import from main { build_parser, main }
+import from cli { build_parser, main }
 import from services.jobs {
     build_jooble_url,
     build_usajobs_url,
@@ -479,4 +479,56 @@ test "job listing salary and description formatting and logo extraction" {
     });
     assert himalayas_with_logo["logo"] == "https://himalayas.app/logo.png";
     assert himalayas_with_logo["source"] == "himalayas";
+}
+
+def himalayas_response -> any {
+    resp = MagicMock();
+    resp.read.return_value = json.dumps({"jobs": [{
+        "title": "Python Developer",
+        "companyName": "Acme",
+        "guid": "him-1",
+        "excerpt": "Build Python services",
+        "description": "Build Python services",
+        "locationRestrictions": ["United States"],
+        "employmentType": "Full Time",
+        "applicationLink": "https://himalayas.app/jobs/him-1"
+    }]}).encode("utf-8");
+    resp.__enter__.return_value = resp;
+    return resp;
+}
+
+test "the Remote filter keeps Himalayas jobs, which are all remote" {
+    with patch("urllib.request.urlopen", return_value=himalayas_response()) as opened {
+        jobs = fetch(5, "python", location="Remote", source="himalayas");
+        assert "country" not in opened.call_args[0][0].full_url;
+    }
+    assert [j["title"] for j in jobs] == ["Python Developer"];
+    assert jobs[0]["location"] == "United States";
+}
+
+test "Himalayas gets a country only when the location is one" {
+    with patch("urllib.request.urlopen", return_value=himalayas_response()) as opened {
+        jobs = fetch(5, "python", location="United States", source="himalayas");
+        assert "country=United+States" in opened.call_args[0][0].full_url;
+    }
+    assert len(jobs) == 1;
+
+    with patch("urllib.request.urlopen", return_value=himalayas_response()) as opened {
+        cities = fetch(5, "python", location="Chicago, IL", source="himalayas");
+        assert "country" not in opened.call_args[0][0].full_url;
+    }
+    assert cities == [];
+}
+
+test "the Remote filter still removes on-site jobs from other sources" {
+    resp = MagicMock();
+    resp.read.return_value = json.dumps({"jobs": [
+        {"title": "Onsite Engineer", "company": "Acme", "location": "Chicago, IL", "snippet": "python", "id": 1},
+        {"title": "Remote Engineer", "company": "Beta", "location": "Remote", "snippet": "python", "id": 2}
+    ]}).encode("utf-8");
+    resp.__enter__.return_value = resp;
+    with patch("urllib.request.urlopen", return_value=resp) {
+        jobs = fetch(5, "python", location="Remote", api_key="test-key", source="jooble");
+    }
+    assert [j["title"] for j in jobs] == ["Remote Engineer"];
 }

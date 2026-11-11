@@ -3,7 +3,7 @@ name = "EECS-449-group-16"
 version = "0.1.0"
 description = "Command-line Jac project"
 entry-point = "main"
-kind = "web-app"
+kind = "fullstack"
 jac-version = "==0.37.11"
 
 [byllm.model]
@@ -14,11 +14,12 @@ default_model = "deepseek/deekseek-flash"
 "services.*" = "server"
 
 [dependencies]
+libsql = "~=0.1"
+litellm = ">=1.40"
 playwright = ">=1.50,<2.0"
 pypdf = ">=5.0,<7.0"
 python-docx = ">=1.0,<2.0"
 reportlab = ">=4.0,<5.0"
-libsql = "~=0.1"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
@@ -36,8 +37,9 @@ project_id = "prj_bf9c70c000554c7c849fc474521eea84"
 [serve]
 base_route_app = "app"
 
+# The JWT signing key comes from JAC_SERVE_AUTH_SECRET. Without it, a dev server
+# mints a private per-project key in .jac/data/. Never commit a key here.
 [serve.auth]
-secret = "eecs449-group16-dev-secret-key-32chars"
 algorithm = "HS256"
 token_ttl_days = 7
 
@@ -63,18 +65,16 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 style = "vega"
 baseColor = "neutral"
 theme = "emerald"
-font = "figtree"
+font = "nunito"
 radius = "large"
 menuAccent = "bold"
 menuColor = "default"
-
 [dependencies.npm]
 radix-ui = "*"
 tailwind-merge = "^3.5.0"
 clsx = "^2.1.1"
 tw-animate-css = "latest"
 shadcn = "latest"
-"@fontsource-variable/figtree" = "latest"
 "@hugeicons/react" = "latest"
 "@hugeicons/core-free-icons" = "latest"
 "class-variance-authority" = "latest"
