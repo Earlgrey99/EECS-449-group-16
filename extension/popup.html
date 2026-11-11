@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Launchpad Autofill</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon-48.png" alt="" width="24" height="24" />
+      <h1>Launchpad Autofill</h1>
+    </header>
+
+    <section id="connect-view" hidden>
+      <p>Connect your Launchpad account. Sign in on the Launchpad site first, then connect here.</p>
+      <button id="connect" class="primary" type="button">Connect to Launchpad</button>
+    </section>
+
+    <section id="main-view" hidden>
+      <p class="account">
+        <span id="account-name"></span>
+        <button id="disconnect" class="link" type="button">Disconnect</button>
+      </p>
+      <label class="check" id="resume-row" hidden>
+        <input id="include-resume" type="checkbox" checked />
+        <span>Attach resume: <strong id="resume-title"></strong></span>
+      </label>
+      <p class="muted" id="no-resume" hidden>No resume saved. Add one in your Launchpad profile.</p>
+      <div class="actions">
+        <button id="preview" type="button">Preview</button>
+        <button id="fill" class="primary" type="button">Fill this page</button>
+      </div>
+      <div id="results" aria-live="polite"></div>
+    </section>
+
+    <p id="message" role="status" hidden></p>
+
+    <form id="track-form" hidden>
+      <h2>Applied? Add it to your tracker</h2>
+      <label>Job title <input name="role" autocomplete="off" required /></label>
+      <label>Company <input name="company" autocomplete="off" required /></label>
+      <button type="submit">Add to tracker</button>
+    </form>
+
+    <details id="settings">
+      <summary>Settings</summary>
+      <form id="settings-form">
+        <label>Launchpad address <input name="base" type="url" autocomplete="off" required /></label>
+        <button type="submit">Save</button>
+      </form>
+    </details>
+
+    <footer>Launchpad never submits an application. Review every field before you submit.</footer>
+    <script src="autofill.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

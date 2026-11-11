@@ -83,8 +83,6 @@ def:pub LoginPage -> JsxElement {
         token_val: str = "";
         error_val: str = "";
         msg_val: str = "";
-        email_val: str = "";
-        name_val: str = "";
 
         for part in query_str.split("&") {
             if "=" in part {
@@ -98,10 +96,6 @@ def:pub LoginPage -> JsxElement {
                     error_val = clean_v;
                 } elif k == "message" {
                     msg_val = clean_v;
-                } elif k == "email" {
-                    email_val = clean_v;
-                } elif k == "name" {
-                    name_val = clean_v;
                 }
             }
         }
@@ -126,12 +120,7 @@ def:pub LoginPage -> JsxElement {
             }
             synced_user = None;
             try {
-                sync_res = await sync_user_session(
-                    token=token_val,
-                    email=email_val if email_val else None,
-                    name=name_val if name_val else None,
-                    auth_provider="google"
-                );
+                sync_res = await sync_user_session(token=token_val);
                 if sync_res and sync_res.get("ok") {
                     synced_user = sync_res.get("user");
                 }
@@ -228,7 +217,7 @@ def:pub LoginPage -> JsxElement {
                 }
             }
             try {
-                sync_res = await sync_user_session(email=email.strip(), name=email.strip().split("@")[0], auth_provider="local");
+                sync_res = await sync_user_session(token=str(localStorage.getItem("jac_token") or ""));
                 if sync_res and sync_res.get("ok") {
                     synced_user = sync_res.get("user");
                 }

@@ -3,7 +3,7 @@ name: Applicant tools verification
 on:
   push:
     branches:
-      - feature/jaccit-web-autofill-tailoring
+      - main
   pull_request:
     branches:
       - main
@@ -30,7 +30,9 @@ jobs:
       - name: Install project dependencies
         run: jac install
       - name: Compile Jac entry point
-        run: jac check main.jac
+        run: |
+          jac check main.jac
+          jac check cli.jac
       - name: Compile new applicant pages and backend
         run: |
           jac check components/ApplicantTools.jac
@@ -44,6 +46,8 @@ jobs:
           jac check 'pages/(auth)/tools.jac'
       - name: Run Jac tests
         run: jac test -d tests -v
+      - name: Run extension field-matching tests
+        run: node --test tests/extension/autofill.test.js
       - name: Run applicant Python tests
         run: .jac/venv/bin/python -m unittest discover -s tests -p 'test_applicant*.py' -v
       - name: Install Chromium for browser walkthrough
@@ -72,6 +76,8 @@ jobs:
               exit 1
             }
           done
+          .jac/venv/bin/python tests/identity_http_check.py
+          .jac/venv/bin/python tests/extension_e2e.py
           .jac/venv/bin/python tests/demo_browser_smoke.py
       - name: Save browser failure details
         if: failure()

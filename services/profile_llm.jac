@@ -13,11 +13,12 @@ import from db {
     get_user_by_id,
     get_user_by_oauth_id,
     sync_oauth_user,
+    save_contact_details as save_contact_row,
     save_user_profile,
     create_resume,
     list_resumes_by_user
 }
-import from .auth_sync { resolve_token_identity }
+import from .auth_sync { _resolve_caller, _public_user }
 
 def extract_resume_text(raw_content: str) -> str {
     if not raw_content {
@@ -170,7 +171,7 @@ def generate_job_search_params(profile_data: dict[str, any]) -> dict[str, any] {
     return generate_fallback_query(profile_data);
 }
 
-def:pub submit_profile_and_generate_query(
+def _submit_profile(
     email: str = "",
     first_name: str = "",
     last_name: str = "",
@@ -181,10 +182,11 @@ def:pub submit_profile_and_generate_query(
     contract_type: str | None = None,
     resume_title: str | None = None,
     resume_content: str | None = None,
-    token: str | None = None,
+    oauth_id: str | None = None,
+    auth_provider: str = "google",
     conn: any = None
 ) -> dict[str, any] {
-    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
+    actual_conn = conn;
     if not email or not email.strip() {
         return {"ok": False, "error": "Email is required."};
     }
@@ -199,12 +201,10 @@ def:pub submit_profile_and_generate_query(
     clean_titles = job_titles.strip() if job_titles else "";
     clean_ct = contract_type.strip() if contract_type else "Full-time";
 
-    resolved_info = resolve_token_identity(token) if token else {};
-    oauth_id = resolved_info.get("user_id");
 
     user: any = get_user_by_email(clean_email, conn=actual_conn);
     if user is None and oauth_id {
-        user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
+        user = get_user_by_oauth_id(str(oauth_id), auth_provider=auth_provider, conn=actual_conn);
         if user is None and str(oauth_id).isdigit() {
             user = get_user_by_id(int(oauth_id), conn=actual_conn);
         }
@@ -217,7 +217,7 @@ def:pub submit_profile_and_generate_query(
                 email=clean_email,
                 name=clean_name,
                 oauth_id=str(oauth_id) if oauth_id else None,
-                auth_provider="google",
+                auth_provider=auth_provider,
                 conn=actual_conn
             );
         } except Exception as err {
@@ -279,31 +279,84 @@ def:pub submit_profile_and_generate_query(
     return {
         "ok": True,
         "cached_query": structured_query,
-        "user": updated_user
+        "user": _public_user(updated_user)
     };
 }
 
-def:pub get_user_profile_data(
+"""Pick the email to save for this caller.
+
+The caller's known email always wins. Only a Google user with no row yet supplies
+one, because Jac does not store it. It is contact data: their row is found by Jac
+user id, so the address grants no access and cannot claim someone else's row.
+"""
+def _email_for_caller(caller: dict[str, any], supplied: str, conn: any = None) -> dict[str, any] {
+    if caller.get("email") {
+        return {"ok": True, "email": str(caller["email"])};
+    }
+    clean = str(supplied or "").strip().lower();
+    if "@" not in clean or " " in clean {
+        return {"ok": False, "error": "Please enter your email."};
+    }
+    if get_user_by_email(clean, conn=conn) is not None {
+        return {"ok": False, "error": "This email is already linked to another account."};
+    }
+    return {"ok": True, "email": clean};
+}
+
+def:protect submit_profile_and_generate_query(
+    token: str,
+    email: str = "",
+    first_name: str = "",
+    last_name: str = "",
+    location: str = "Remote",
+    sector: str = "",
+    job_titles: str = "",
+    salary_min: int | None = None,
+    contract_type: str | None = None,
+    resume_title: str | None = None,
+    resume_content: str | None = None
+) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    chosen = _email_for_caller(caller, email);
+    if not chosen["ok"] {
+        return chosen;
+    }
+    return _submit_profile(
+        email=chosen["email"],
+        first_name=first_name,
+        last_name=last_name,
+        location=location,
+        sector=sector,
+        job_titles=job_titles,
+        salary_min=salary_min,
+        contract_type=contract_type,
+        resume_title=resume_title,
+        resume_content=resume_content,
+        oauth_id=caller["oauth_id"],
+        auth_provider=caller["auth_provider"]
+    );
+}
+
+def _load_profile(
     email: str | None = None,
-    token: str | None = None,
+    identity: dict[str, any] | None = None,
     conn: any = None
 ) -> dict[str, any] {
-    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
+    actual_conn = conn;
     clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
-    resolved_info = resolve_token_identity(token) if token else {};
-
-    if not clean_email and resolved_info.get("email") {
-        clean_email = str(resolved_info["email"]).strip().lower();
-    }
-
-    oauth_id = resolved_info.get("user_id");
+    resolved_info = identity or {};
+    oauth_id = resolved_info.get("oauth_id");
+    auth_provider = str(resolved_info.get("auth_provider") or "local");
 
     user: any = None;
     if clean_email {
         user = get_user_by_email(clean_email, conn=actual_conn);
     }
     if user is None and oauth_id {
-        user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
+        user = get_user_by_oauth_id(str(oauth_id), auth_provider=auth_provider, conn=actual_conn);
         if user is None and str(oauth_id).isdigit() {
             user = get_user_by_id(int(oauth_id), conn=actual_conn);
         }
@@ -337,12 +390,9 @@ def:pub get_user_profile_data(
             } except Exception {}
         }
 
-        sanitized_user = dict(user);
-        sanitized_user.pop("password_hash", None);
-
         return {
             "ok": True,
-            "user": sanitized_user,
+            "user": _public_user(user),
             "latest_resume": sanitized_resume,
             "cached_query": cached_query_dict,
             "onboarding_completed": bool(user.get("onboarding_completed"))
@@ -356,12 +406,12 @@ def:pub get_user_profile_data(
                 email=clean_email,
                 name=name_val,
                 oauth_id=str(oauth_id) if oauth_id else None,
-                auth_provider="google",
+                auth_provider=auth_provider,
                 conn=actual_conn
             );
             return {
                 "ok": True,
-                "user": created_user,
+                "user": _public_user(created_user),
                 "latest_resume": None,
                 "cached_query": None,
                 "onboarding_completed": False
@@ -385,4 +435,75 @@ def:pub get_user_profile_data(
         "cached_query": None,
         "onboarding_completed": False
     };
+}
+
+"""Check contact details before saving, because they get typed into other sites' forms."""
+def _clean_contact(phone: str, city: str, linkedin: str, github: str, portfolio: str) -> dict[str, any] {
+    clean_phone = str(phone or "").strip();
+    if clean_phone and not re.fullmatch(r"[+\d\s()\-.]{7,25}", clean_phone) {
+        return {"ok": False, "error": "Enter a valid phone number."};
+    }
+    links = {"LinkedIn": linkedin, "GitHub": github, "Portfolio": portfolio};
+    clean_links: dict[str, str] = {};
+    for (label, value) in links.items() {
+        link = str(value or "").strip();
+        if link and not re.fullmatch(r"https?://[^\s.]+\.[^\s]+", link) {
+            return {"ok": False, "error": f"Enter a full {label} URL, starting with https://"};
+        }
+        clean_links[label] = link[:300];
+    }
+    return {
+        "ok": True,
+        "phone": clean_phone,
+        "city": str(city or "").strip()[:120],
+        "linkedin": clean_links["LinkedIn"],
+        "github": clean_links["GitHub"],
+        "portfolio": clean_links["Portfolio"]
+    };
+}
+
+def _save_contact(
+    user_id: int,
+    phone: str,
+    city: str,
+    linkedin: str,
+    github: str,
+    portfolio: str,
+    conn: any = None
+) -> dict[str, any] {
+    clean = _clean_contact(phone, city, linkedin, github, portfolio);
+    if not clean["ok"] {
+        return clean;
+    }
+    user = save_contact_row(
+        user_id, clean["phone"], clean["city"], clean["linkedin"], clean["github"], clean["portfolio"], conn=conn
+    );
+    return {"ok": True, "user": _public_user(user)};
+}
+
+def:protect save_contact_details(
+    token: str,
+    phone: str,
+    city: str,
+    linkedin: str,
+    github: str,
+    portfolio: str
+) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    user = caller["app_user"];
+    if user is None {
+        return {"ok": False, "error": "Save your profile first."};
+    }
+    return _save_contact(int(user["id"]), phone, city, linkedin, github, portfolio);
+}
+
+def:protect get_user_profile_data(token: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    return _load_profile(email=caller["email"], identity=caller);
 }

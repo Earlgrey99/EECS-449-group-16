@@ -1,9 +1,8 @@
-import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate, jacLogout }
+import from "@jac/runtime" { Link, useNavigate, jacIsLoggedIn, Navigate }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     Search01Icon,
     Bookmark01Icon,
-    Logout01Icon,
     SparklesIcon,
     FilterHorizontalIcon,
     CheckmarkCircle02Icon,
@@ -20,6 +19,7 @@ import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from ..services.compatibility { get_resume_match_scores }
 import from ..services.locations { search_cities }
+import from ..services.tracker { add_tracker_application }
 import from ..lib.utils { format_salary, format_desc }
 
 glob ALL_CONTRACT_TYPES: list[str] = [
@@ -118,19 +118,17 @@ def:pub JobSearchFeed -> JsxElement {
     has did_load_jobs: bool = False;
     has match_rows: list[dict[str, any]] = [];
     has has_resume: bool = True;
+    has tracked_keys: list[str] = [];
+    has track_message: str = "";
 
     async can with entry {
         if did_load_jobs {
             return;
         }
         did_load_jobs = True;
-        tok: str = "";
-        try {
-            tok = str(localStorage.getItem("jac_token") or "");
-        } except Exception {}
         tailored_res: any = None;
         try {
-            tailored_res = await get_user_tailored_jobs(token=tok);
+            tailored_res = await get_user_tailored_jobs(token=session_token());
         } except Exception {}
 
         init_jobs: list[dict[str, any]] = [];
@@ -197,18 +195,29 @@ def:pub JobSearchFeed -> JsxElement {
         tailored_jobs = init_jobs;
         loading = False;
 
-        # Score every job against the resume saved in the user's profile.
-        # This runs after the jobs are on screen, so the badges appear a
-        # moment later instead of slowing down the page.
+        await load_scores(init_jobs);
+    }
+
+    def session_token -> str {
+        try {
+            return str(localStorage.getItem("jac_token") or "");
+        } except Exception {
+            return "";
+        }
+    }
+
+    # Score jobs against the resume saved in the user's profile. This runs after
+    # the jobs are on screen, so the badges appear a moment later instead of
+    # slowing down the page. A job's score doesn't change, so rows accumulate.
+    async def load_scores(to_score: list[dict[str, any]]) {
         match_res: any = None;
         try {
-            match_res = await get_resume_match_scores(jobs=init_jobs, token=tok);
+            match_res = await get_resume_match_scores(jobs=to_score, token=session_token());
         } except Exception {}
         if match_res and match_res.get("ok") {
             has_resume = bool(match_res.get("has_resume"));
-            if match_res.get("scores") {
-                match_rows = match_res.get("scores");
-            }
+            new_rows: list[dict[str, any]] = match_res.get("scores") or [];
+            match_rows = new_rows + match_rows;
         }
     }
 
@@ -369,6 +378,7 @@ def:pub JobSearchFeed -> JsxElement {
             selected_id = "";
         }
         searching = False;
+        await load_scores(jobs);
     }
 
     def reset_to_tailored {
@@ -401,14 +411,25 @@ def:pub JobSearchFeed -> JsxElement {
         city_dropdown_open = False;
     }
 
+    def clear_and_show_recommendations {
+        clear_filters();
+        if is_custom_search {
+            reset_to_tailored();
+        }
+    }
+
     def matches(j: dict[str, any]) -> bool {
         if is_custom_search {
             return True;
         }
+        # The server already chose tailored jobs using the saved query, so these
+        # filters apply only after the user changes the search.
+        q_edited = query.strip() != tailored_query.strip();
+        locs_edited = ", ".join(locations_filter) != ", ".join(tailored_locations);
         hay = (str(j.get("title", "")) + " " + str(j.get("company", "")) + " " + str(j.get("tags", ""))).lower();
-        matches_q = query.strip().lower() in hay if query.strip() else True;
+        matches_q = query.strip().lower() in hay if (query.strip() and q_edited) else True;
         matches_l = True;
-        if locations_filter {
+        if locs_edited and locations_filter {
             j_loc = str(j.get("location", "")).lower();
             matched_any = False;
             for loc_f in locations_filter {
@@ -458,6 +479,41 @@ def:pub JobSearchFeed -> JsxElement {
             saved_ids = [sid for sid in saved_ids if sid != jid];
         } else {
             saved_ids = saved_ids + [jid];
+        }
+    }
+
+    # Pass the job along, because external listings aren't in the built-in job list.
+    def apply_to(job: any) {
+        details = {"title": str(job.get("title", "")), "desc": str(job.get("desc", "")), "tags": str(job.get("tags", ""))};
+        nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))), {"state": {"job": details}});
+    }
+
+    def track_key(job: any) -> str {
+        return str(job.get("id", ""));
+    }
+
+    async def add_to_tracker(job: any) {
+        track_message = "";
+        today: any = Reflect.construct(Date, []);
+        try {
+            res: any = await add_tracker_application(
+                token=session_token(),
+                role=str(job.get("title", "")),
+                company=str(job.get("company", "")),
+                applied_date=str(today.toLocaleDateString("en-CA")),
+                description="",
+                pay=None,
+                status="Applied",
+                job_url=str(job.get("link") or job.get("id") or ""),
+                salary_text=str(job.get("salary") or "")
+            );
+            if res and res.get("ok") {
+                tracked_keys = tracked_keys + [track_key(job)];
+            } else {
+                track_message = str(res.get("error") if res else "Could not add this job to your tracker.");
+            }
+        } except Exception {
+            track_message = "Could not add this job to your tracker.";
         }
     }
 
@@ -717,8 +773,7 @@ def:pub JobSearchFeed -> JsxElement {
                         <EmptyDescription className="text-center max-w-md">Try adjusting your search terms, removing filters, or searching remote roles.</EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent className="flex flex-row flex-wrap items-center justify-center gap-2">
-                        <Button variant="outline" onClick={clear_filters}>Clear filters</Button>
-                        {is_custom_search and <Button onClick={reset_to_tailored}>Reset to Profile Matches</Button>}
+                        <Button variant="outline" onClick={clear_and_show_recommendations}>Clear filters</Button>
                     </EmptyContent>
                 </Empty>}
 
@@ -785,11 +840,10 @@ def:pub JobSearchFeed -> JsxElement {
                                     }}
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
+                                    <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now (demo)</Button>
                                     <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="ghost" size="sm" onClick={lambda { jacLogout(); }}>
-                                        <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /> Sign out
-                                    </Button>
+                                    <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
+                                    {bool(track_message) and <p role="alert" className="text-sm text-destructive">{track_message}</p>}
                                 </div>
                             </CardContent>
                         </Card>}
