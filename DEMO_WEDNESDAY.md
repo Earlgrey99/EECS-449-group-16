@@ -1,4 +1,4 @@
-# Jaccit — Wednesday, November 4, 2026 demo checklist
+# Launchpad — Wednesday, November 4, 2026 demo checklist
 
 > **Local classroom prototype** — run only on localhost with sample data.
 > The applicant autofill is not a full production workflow.
@@ -14,7 +14,7 @@ git switch main
 git pull --ff-only origin main
 jac --version                    # expected 0.37.11
 jac install
-export TURSO_DATABASE_URL="$HOME/jaccit-demo.db"
+export TURSO_DATABASE_URL="$HOME/launchpad-demo.db"
 jac run --dev --profile test main.jac
 ```
 
@@ -39,7 +39,7 @@ Do not rely on Google OAuth or a working external jobs API for the classroom dem
 ## 2. The 5-minute live walkthrough
 
 **0:00–0:30: Landing and jobs.**
-Introduce Jaccit as a Jac-based job application workflow. Go to Jobs.
+Introduce Launchpad as a Jac-based job application workflow. Go to Jobs.
 Explain local sample listings are a reliable fallback, while the backend also
 supports Jooble, USAJobs, Himalayas and The Muse with optional credentials/network.
 
@@ -92,7 +92,7 @@ fallback. Network/API access may affect live search, so show this last.
 
 - If login fails, verify the process was started with
   `jac run --dev --profile test main.jac` and
-  `TURSO_DATABASE_URL="$HOME/jaccit-demo.db"`.
+  `TURSO_DATABASE_URL="$HOME/launchpad-demo.db"`.
 - If a cached job query gives poor results, clear the two *visible* job-search
   fields (on the presentation-hardening PR) or start with the local demo
   listings before profile onboarding.

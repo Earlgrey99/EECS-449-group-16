@@ -24,6 +24,8 @@ def:pub TopNav -> JsxElement {
         dropdown_open = False;
         try {
             localStorage.setItem("dev_logged_out", "true");
+            localStorage.removeItem("user_email");
+            localStorage.removeItem("user_resume_title");
         } except Exception {}
         jacLogout();
         logged_in = False;

@@ -3,6 +3,7 @@ jac.local.toml
 __pycache__/
 .env
 skills/
+node_modules/
 
 .eecs449/
 profile.json
