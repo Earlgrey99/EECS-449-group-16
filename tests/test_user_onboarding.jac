@@ -21,7 +21,8 @@ import from services.profile_llm {
     generate_job_search_params,
     _submit_profile,
     _load_profile,
-    _save_contact
+    _save_contact,
+    _save_answers
 }
 import from services.jobs { _tailored_jobs_for }
 
@@ -362,4 +363,37 @@ test "contact details are saved, cleared, and validated" {
     cleared = _save_contact(uid, "", "", "", "", "", conn=conn)["user"];
     assert cleared["phone"] == "";
     assert cleared["linkedin"] == "";
+}
+
+test "application answers are saved and demographic answers are refused" {
+    conn = make_test_db();
+    email = "answers@example.com";
+    uid = int(register_user(name="Answers", email=email, password="password123", conn=conn)["id"]);
+
+    saved = _save_answers(uid, {
+        "work_authorized": "Yes",
+        "needs_sponsorship": "maybe",
+        "school": " University of Michigan ",
+        "degree": "",
+        "gender": "woman",
+        "race": "asian",
+        "ssn": "123-45-6789"
+    }, conn=conn);
+    assert saved["answers"] == {"school": "University of Michigan", "work_authorized": "yes"};
+
+    loaded = _load_profile(email=email, conn=conn);
+    assert loaded["answers"] == {"school": "University of Michigan", "work_authorized": "yes"};
+    assert "application_answers" not in loaded["user"];
+
+    _save_answers(uid, {}, conn=conn);
+    assert _load_profile(email=email, conn=conn)["answers"] == {};
+}
+
+test "a new account without a name doesn't get the name None" {
+    conn = make_test_db();
+    identity = {"user_id": "u1", "name": None, "first_name": None, "last_name": None, "auth_provider": "local"};
+    user = _load_profile(email="newperson@example.com", identity=identity, conn=conn)["user"];
+    assert "None" not in str(user["name"]);
+    assert user["first_name"] != "None";
+    assert user["last_name"] != "None";
 }

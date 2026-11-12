@@ -21,7 +21,12 @@ import from .ui.badge { Badge }
 import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
-import from ..services.profile_llm { submit_profile_and_generate_query, get_user_profile_data, save_contact_details }
+import from ..services.profile_llm {
+    submit_profile_and_generate_query,
+    get_user_profile_data,
+    save_contact_details,
+    save_application_answers
+}
 import from ..services.locations { search_cities }
 
 glob POPULAR_SECTORS: list[str] = [
@@ -50,6 +55,23 @@ glob POPULAR_TITLES: list[str] = [
     "Product Manager"
 ];
 
+glob ANSWER_FIELDS: list[dict[str, str]] = [
+    {"key": "current_company", "label": "Current or most recent company"},
+    {"key": "current_title", "label": "Current or most recent job title"},
+    {"key": "school", "label": "School"},
+    {"key": "degree", "label": "Degree"},
+    {"key": "major", "label": "Major or field of study"},
+    {"key": "grad_year", "label": "Graduation year"},
+    {"key": "country", "label": "Country you live in"},
+    {"key": "salary", "label": "Salary expectation"},
+    {"key": "start_date", "label": "Earliest start date"}
+];
+
+glob YES_NO_FIELDS: list[dict[str, str]] = [
+    {"key": "work_authorized", "label": "Authorized to work where you're applying?"},
+    {"key": "needs_sponsorship", "label": "Will you need visa sponsorship?"}
+];
+
 def:pub UserProfilePage -> JsxElement {
     nav = useNavigate();
 
@@ -60,6 +82,7 @@ def:pub UserProfilePage -> JsxElement {
     has linkedin: str = "";
     has github: str = "";
     has portfolio: str = "";
+    has answers: dict[str, str] = {};
     has first_name: str = "";
     has last_name: str = "";
     has locations: list[str] = ["Remote"];
@@ -163,6 +186,10 @@ def:pub UserProfilePage -> JsxElement {
                 linkedin = str(u.get("linkedin", "") or "");
                 github = str(u.get("github", "") or "");
                 portfolio = str(u.get("portfolio", "") or "");
+                saved_answers: any = res.get("answers");
+                if saved_answers {
+                    answers = saved_answers;
+                }
 
                 if u.get("location") {
                     raw_loc = str(u.get("location")).strip();
@@ -231,6 +258,13 @@ def:pub UserProfilePage -> JsxElement {
     def handle_linkedin(e: ChangeEvent) { linkedin = e.target.value; }
     def handle_github(e: ChangeEvent) { github = e.target.value; }
     def handle_portfolio(e: ChangeEvent) { portfolio = e.target.value; }
+    # Assign by index: in client code, {**answers, key: value} uses the literal name "key".
+    def set_answer(key: str, value: str) {
+        updated = {**answers};
+        updated[key] = value;
+        answers = updated;
+    }
+    def answer_value(key: str) -> str { return str(answers.get(key) or ""); }
     def handle_job_titles(e: ChangeEvent) { job_titles = e.target.value; }
     def handle_salary(e: ChangeEvent) { salary_min = e.target.value; }
 
@@ -389,12 +423,13 @@ def:pub UserProfilePage -> JsxElement {
                     github=github.strip(),
                     portfolio=portfolio.strip()
                 );
+                saved: any = await save_application_answers(token=tok, answers=answers);
                 submitting = False;
-                if contact and contact.get("ok") {
+                if contact and contact.get("ok") and saved and saved.get("ok") {
                     nav("/jobs");
                 } else {
                     step = 1;
-                    message = str(contact.get("error") if contact else "Could not save your contact details.");
+                    message = str(contact.get("error") if (contact and not contact.get("ok")) else "Could not save your details.");
                 }
             } else {
                 err_msg = str(res.get("error") if res else "Failed to save profile.");
@@ -667,6 +702,43 @@ def:pub UserProfilePage -> JsxElement {
                                         }}
                                     </div>
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>}
+
+                    {step == 2 and <Card className="border border-border/80 shadow-sm pt-1 pb-4">
+                        <CardContent className="flex flex-col gap-4 pt-1.5 pb-2 px-6">
+                            <div className="flex flex-col border-b pb-3">
+                                <h2 className="text-base font-semibold text-foreground">Application answers</h2>
+                                <p className="text-xs text-muted-foreground">Optional. The Launchpad extension uses these to answer common questions. Anything left blank is left for you.</p>
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                {for field in YES_NO_FIELDS {
+                                    <div key={field["key"]} className="flex flex-col gap-1.5">
+                                        <label htmlFor={"answer-" + field["key"]} className="text-xs font-medium text-foreground">{field["label"]}</label>
+                                        <select
+                                            id={"answer-" + field["key"]}
+                                            value={answer_value(field["key"])}
+                                            onChange={lambda (e: ChangeEvent) { set_answer(field["key"], e.target.value); }}
+                                            className="h-10 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                                        >
+                                            <option value="">Leave for me</option>
+                                            <option value="yes">Yes</option>
+                                            <option value="no">No</option>
+                                        </select>
+                                    </div>
+                                }}
+                                {for field in ANSWER_FIELDS {
+                                    <div key={field["key"]} className="flex flex-col gap-1.5">
+                                        <label htmlFor={"answer-" + field["key"]} className="text-xs font-medium text-foreground">{field["label"]}</label>
+                                        <Input
+                                            id={"answer-" + field["key"]}
+                                            value={answer_value(field["key"])}
+                                            onChange={lambda (e: ChangeEvent) { set_answer(field["key"], e.target.value); }}
+                                            className="h-10 bg-background"
+                                        />
+                                    </div>
+                                }}
                             </div>
                         </CardContent>
                     </Card>}

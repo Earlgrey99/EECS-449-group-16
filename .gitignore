@@ -8,3 +8,4 @@ skills/
 profile.json
 tailored-review.*
 *.pyc
+node_modules/.vite/

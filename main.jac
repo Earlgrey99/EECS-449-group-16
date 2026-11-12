@@ -12,7 +12,12 @@ import from services.auth_sync { sync_user_session, get_test_user_session }
 import from services.compatibility { get_resume_match_scores }
 import from services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from services.locations { search_cities }
-import from services.profile_llm { submit_profile_and_generate_query, get_user_profile_data, save_contact_details }
+import from services.profile_llm {
+    submit_profile_and_generate_query,
+    get_user_profile_data,
+    save_contact_details,
+    save_application_answers
+}
 import from services.tracker {
     list_tracker_applications,
     add_tracker_application,

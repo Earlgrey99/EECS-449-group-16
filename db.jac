@@ -67,6 +67,7 @@ def init_db(conn: any = None) {
             linkedin TEXT,
             github TEXT,
             portfolio TEXT,
+            application_answers TEXT,
             auth_provider TEXT DEFAULT 'local',
             oauth_id TEXT,
             first_name TEXT,
@@ -128,7 +129,7 @@ def init_db(conn: any = None) {
     if not has_cached_job_query {
         db_conn.execute("ALTER TABLE users ADD COLUMN cached_job_query TEXT;");
     }
-    for contact_column in ["city", "linkedin", "github", "portfolio"] {
+    for contact_column in ["city", "linkedin", "github", "portfolio", "application_answers"] {
         if not any(column[1] == contact_column for column in user_columns) {
             db_conn.execute(f"ALTER TABLE users ADD COLUMN {contact_column} TEXT;");
         }
@@ -580,6 +581,16 @@ def update_user(
     vals.append(user_id);
     sql = f"UPDATE users SET {', '.join(fields)} WHERE id = ?";
     cur.execute(sql, tuple(vals));
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
+def save_application_answers(user_id: int, answers_json: str, conn: any = None) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET application_answers = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (answers_json, user_id)
+    );
     db_conn.commit();
     return get_user_by_id(user_id, conn=db_conn);
 }

@@ -14,6 +14,7 @@ import from db {
     get_user_by_oauth_id,
     sync_oauth_user,
     save_contact_details as save_contact_row,
+    save_application_answers as save_answers_row,
     save_user_profile,
     create_resume,
     list_resumes_by_user
@@ -370,6 +371,7 @@ def _load_profile(
         return {
             "ok": True,
             "user": _public_user(user),
+            "answers": _read_answers(user),
             "latest_resume": latest_resume,
             "cached_query": cached_query_dict,
             "onboarding_completed": bool(user.get("onboarding_completed"))
@@ -377,7 +379,7 @@ def _load_profile(
     }
 
     if clean_email and "@" in clean_email {
-        name_val = resolved_info.get("name") or (f"{resolved_info.get('first_name', '')} {resolved_info.get('last_name', '')}".strip()) or clean_email.split("@")[0];
+        name_val = resolved_info.get("name") or (f"{resolved_info.get('first_name') or ''} {resolved_info.get('last_name') or ''}".strip()) or clean_email.split("@")[0];
         try {
             created_user = sync_oauth_user(
                 email=clean_email,
@@ -475,6 +477,56 @@ def:protect save_contact_details(
         return {"ok": False, "error": "Save your profile first."};
     }
     return _save_contact(int(user["id"]), phone, city, linkedin, github, portfolio);
+}
+
+# Demographic answers are deliberately absent: they stay in the user's browser.
+glob TEXT_ANSWERS: list[str] = [
+    "salary", "start_date", "current_company", "current_title", "school", "degree", "major", "grad_year", "country"
+];
+glob YES_NO_ANSWERS: list[str] = ["work_authorized", "needs_sponsorship"];
+
+def _clean_answers(answers: any) -> dict[str, str] {
+    source = answers if isinstance(answers, dict) else {};
+    clean: dict[str, str] = {};
+    for key in TEXT_ANSWERS {
+        value = str(source.get(key) or "").strip()[:200];
+        if value {
+            clean[key] = value;
+        }
+    }
+    for key in YES_NO_ANSWERS {
+        value = str(source.get(key) or "").strip().lower();
+        if value in ["yes", "no"] {
+            clean[key] = value;
+        }
+    }
+    return clean;
+}
+
+def _read_answers(user: dict[str, any] | None) -> dict[str, str] {
+    try {
+        return _clean_answers(json.loads(str((user or {}).get("application_answers") or "{}")));
+    } except Exception {
+        return {};
+    }
+}
+
+def _save_answers(user_id: int, answers: any, conn: any = None) -> dict[str, any] {
+    clean = _clean_answers(answers);
+    save_answers_row(user_id, json.dumps(clean), conn=conn);
+    return {"ok": True, "answers": clean};
+}
+
+def:protect save_application_answers(token: str, answers: dict[str, str]) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    user = caller["app_user"];
+    if user is None {
+        return {"ok": False, "error": "Save your profile first."};
+    }
+    return _save_answers(int(user["id"]), answers);
 }
 
 def:protect get_user_profile_data(token: str) -> dict[str, any] {

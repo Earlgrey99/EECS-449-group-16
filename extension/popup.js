@@ -2,6 +2,7 @@
 
 const DEFAULT_BASE = "http://localhost:8000";
 const $ = (id) => document.getElementById(id);
+const send = (message) => chrome.runtime.sendMessage(message);
 
 let account = null;
 let pageUrl = "";
@@ -10,9 +11,12 @@ const GROUPS = [
   { status: "filled", title: "Filled. Please review" },
   { status: "ready", title: "Ready to fill" },
   { status: "kept", title: "Already has a value, left unchanged" },
+  { status: "check", title: "Pick from the suggestions" },
+  { status: "no_answer", title: "No saved answer", warn: true },
   { status: "no_value", title: "Not in your profile. Add it in Launchpad", warn: true },
   { status: "not_fillable", title: "Couldn't fill. Please complete by hand", warn: true },
   { status: "sensitive", title: "Please answer these yourself", warn: true },
+  { status: "blocked", title: "Launchpad never answers these", warn: true },
 ];
 
 function showMessage(text, isError = false) {
@@ -27,49 +31,18 @@ async function getBase() {
   return base || DEFAULT_BASE;
 }
 
-async function callLaunchpad(fn, body, token) {
-  const base = await getBase();
-  const response = await fetch(`${base}/function/${fn}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  if (response.status === 401) {
-    const expired = new Error("Your Launchpad session has expired. Please connect again.");
-    expired.expired = true;
-    throw expired;
-  }
-  if (!response.ok) throw new Error(`Launchpad returned an error (${response.status}).`);
-  const payload = await response.json();
-  return payload?.data?.result ?? {};
-}
-
-// Reads the token from a signed-in Launchpad tab, so the extension works for
-// Google users too and never handles a password. Session storage clears it when
-// the browser closes.
 async function connect() {
-  const base = await getBase();
-  const [tab] = await chrome.tabs.query({ url: `${base}/*` });
-  if (!tab) {
-    await chrome.tabs.create({ url: `${base}/login` });
-    showMessage("Sign in to Launchpad in the new tab, then open this popup and connect again.");
+  const result = await send({ type: "connect" });
+  if (!result.ok) throw new Error(result.error);
+  if (!result.connected) {
+    showMessage(result.message);
     return;
   }
-  const [{ result: token }] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => localStorage.getItem("jac_token"),
-  });
-  if (!token) {
-    await chrome.tabs.update(tab.id, { active: true, url: `${base}/login` });
-    showMessage("Sign in to Launchpad in that tab, then open this popup and connect again.");
-    return;
-  }
-  await chrome.storage.session.set({ token });
   await loadAccount();
 }
 
 async function disconnect() {
-  await chrome.storage.session.remove("token");
+  await send({ type: "disconnect" });
   account = null;
   showMessage("");
   $("results").replaceChildren();
@@ -77,17 +50,12 @@ async function disconnect() {
 }
 
 async function loadAccount() {
-  const { token } = await chrome.storage.session.get("token");
+  const result = await send({ type: "account" });
   account = null;
-  if (token) {
-    try {
-      const result = await callLaunchpad("get_user_profile_data", { token }, token);
-      if (!result.ok) throw Object.assign(new Error(result.error || "Couldn't load your profile."), { expired: true });
-      account = { user: result.user || {}, resume: result.latest_resume || null };
-    } catch (error) {
-      if (error.expired) await chrome.storage.session.remove("token");
-      showMessage(error.message, true);
-    }
+  if (result.ok && result.connected) {
+    account = { user: result.user, resume: result.resume };
+  } else if (result.error || result.message) {
+    showMessage(result.error || result.message, true);
   }
   render();
 }
@@ -104,26 +72,6 @@ function render() {
   if (resume) $("resume-title").textContent = resume.title || "Saved resume";
 }
 
-async function buildProfile() {
-  const { user, resume } = account;
-  const profile = {
-    first_name: user.first_name || "",
-    last_name: user.last_name || "",
-    name: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.name || "",
-    email: user.email || "",
-    phone: user.phone || "",
-    // user.location holds target job locations, so city is where the user lives.
-    location: user.city || "",
-    linkedin: user.linkedin || "",
-    github: user.github || "",
-    portfolio: user.portfolio || "",
-  };
-  if (resume && $("include-resume").checked) {
-    profile.resume = { title: resume.title, content: resume.content };
-  }
-  return profile;
-}
-
 async function targetTabId() {
   const fromQuery = new URLSearchParams(location.search).get("tab");
   if (fromQuery) return Number(fromQuery);
@@ -138,7 +86,15 @@ async function runOnPage(apply) {
     const tabId = await targetTabId();
     const target = { tabId, allFrames: true };
     await chrome.scripting.executeScript({ target, files: ["autofill.js"] });
-    const profile = await buildProfile();
+    const built = await send({ type: "profile", includeResume: $("include-resume").checked });
+    if (!built.ok) throw new Error(built.error);
+    if (!built.connected) {
+      account = null;
+      render();
+      showMessage(built.message || "Please connect to Launchpad.");
+      return;
+    }
+    const profile = built.profile;
     const frames = await chrome.scripting.executeScript({
       target,
       func: (values, isApply) => window.LaunchpadAutofill.run(values, { apply: isApply }, document),
@@ -226,29 +182,18 @@ async function addToTracker(event) {
   event.preventDefault();
   const form = event.target;
   showMessage("");
-  try {
-    const { token } = await chrome.storage.session.get("token");
-    const url = new URL(pageUrl);
-    const now = new Date();
-    const pad = (value) => String(value).padStart(2, "0");
-    const result = await callLaunchpad("add_tracker_application", {
-      token,
-      role: form.elements.role.value.trim(),
-      company: form.elements.company.value.trim(),
-      applied_date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-      description: "",
-      pay: null,
-      status: "Applied",
-      job_url: url.origin + url.pathname,
-      salary_text: "",
-    }, token);
-    if (!result.ok) throw new Error(result.error || "Couldn't add this to your tracker.");
-    form.hidden = true;
-    showMessage(result.already_tracked ? "This job is already in your tracker." : "Added to your tracker.");
-  } catch (error) {
-    if (error.expired) await chrome.storage.session.remove("token");
-    showMessage(error.message, true);
+  const result = await send({
+    type: "track",
+    role: form.elements.role.value,
+    company: form.elements.company.value,
+    url: pageUrl,
+  });
+  if (!result.ok) {
+    showMessage(result.error, true);
+    return;
   }
+  form.hidden = true;
+  showMessage(result.alreadyTracked ? "This job is already in your tracker." : "Added to your tracker.");
 }
 
 async function loadSettingsForm() {
@@ -289,6 +234,7 @@ $("preview").addEventListener("click", () => runOnPage(false));
 $("fill").addEventListener("click", () => runOnPage(true));
 $("settings-form").addEventListener("submit", saveSettings);
 $("track-form").addEventListener("submit", addToTracker);
+$("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 loadSettingsForm();
 loadAccount();
