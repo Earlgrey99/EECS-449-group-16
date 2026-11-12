@@ -205,9 +205,6 @@ def _submit_profile(
     user: any = get_user_by_email(clean_email, conn=actual_conn);
     if user is None and oauth_id {
         user = get_user_by_oauth_id(str(oauth_id), auth_provider=auth_provider, conn=actual_conn);
-        if user is None and str(oauth_id).isdigit() {
-            user = get_user_by_id(int(oauth_id), conn=actual_conn);
-        }
     }
 
     if user is None {
@@ -357,9 +354,6 @@ def _load_profile(
     }
     if user is None and oauth_id {
         user = get_user_by_oauth_id(str(oauth_id), auth_provider=auth_provider, conn=actual_conn);
-        if user is None and str(oauth_id).isdigit() {
-            user = get_user_by_id(int(oauth_id), conn=actual_conn);
-        }
     }
 
     if user is not None {

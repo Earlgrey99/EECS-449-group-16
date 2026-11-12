@@ -147,20 +147,14 @@ def:pub UserProfilePage -> JsxElement {
             try {
                 tok = str(localStorage.getItem("jac_token") or "");
             } except Exception {}
-            stored_email: str = "";
-            try {
-                stored_email = str(localStorage.getItem("user_email") or "");
-            } except Exception {}
-            res = await get_user_profile_data(email=stored_email if stored_email else None, token=tok);
+            # The server finds the user from the token alone.
+            res = await get_user_profile_data(token=tok);
             if res and res.get("ok") {
                 u = res.get("user", {});
                 email_val = str(u.get("email", "") or "");
                 if email_val and "@" in email_val {
                     email = email_val;
                     email_locked = True;
-                    try {
-                        localStorage.setItem("user_email", email_val);
-                    } except Exception {}
                 }
 
                 loaded_fn = str(u.get("first_name", "") or "");
@@ -457,11 +451,6 @@ def:pub UserProfilePage -> JsxElement {
             );
 
             if res and res.get("ok") {
-                if email.strip() {
-                    try {
-                        localStorage.setItem("user_email", email.strip().lower());
-                    } except Exception {}
-                }
                 if resume_title.strip() {
                     existing_resume_title = resume_title.strip();
                     has_existing_resume = True;
