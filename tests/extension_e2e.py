@@ -8,7 +8,8 @@ Loads the real extension in Chromium and drives its real popup:
 
 A toolbar click can't be automated, so the test copy of the extension gets access to
 the fixture page's origin only, which matches what activeTab grants, and the popup is
-told which tab to use.
+told which tab to use. The test copy also treats the fixture site as a hiring site, so
+the on-page panel appears, and opens the panel's shadow root so the test can read it.
 Creates a throwaway account with random credentials in the configured database.
 """
 from __future__ import annotations
@@ -75,10 +76,14 @@ def prepare_extension(directory: Path) -> Path:
     target = directory / "extension"
     shutil.copytree(ROOT / "extension", target)
     manifest = json.loads((target / "manifest.json").read_text())
-    manifest["host_permissions"] = ["http://localhost:8000/*", "http://127.0.0.1/*"]
-    manifest["background"] = {"service_worker": "test_worker.js"}  # Reveals the extension id.
+    manifest["host_permissions"] = [f"{BASE}/*", "http://127.0.0.1/*"]
+    for script in ("background.js", "popup.js"):
+        path = target / script
+        path.write_text(path.read_text().replace("http://localhost:8000", BASE))
+    manifest["content_scripts"][0]["matches"] = ["http://127.0.0.1/ats_form.html*"]
     (target / "manifest.json").write_text(json.dumps(manifest))
-    (target / "test_worker.js").write_text("")
+    panel = target / "panel.js"
+    panel.write_text(panel.read_text().replace('mode: "closed"', 'mode: "open"'))
     return target
 
 
@@ -107,6 +112,7 @@ def main() -> int:
         pages.mkdir()
         shutil.copy(ROOT / "tests/extension/fixtures/tricky_form.html", pages)
         shutil.copy(ROOT / "tests/extension/fixtures/other_origin_frame.html", pages)
+        shutil.copy(ROOT / "tests/extension/fixtures/ats_form.html", pages)
         shutil.copy(ROOT / "examples/application_form.html", pages)
         server, site = serve_fixtures(pages)
 
@@ -275,6 +281,86 @@ def main() -> int:
                 popup.locator("#preview").click()
                 popup.locator("#message.error").wait_for(timeout=10000)
                 check("explains pages it can't run on", "can't run on this page" in popup.locator("#message").inner_text())
+
+                # The on-page panel, with saved answers.
+                api("/function/save_application_answers", {"token": token, "answers": {
+                    "work_authorized": "yes", "needs_sponsorship": "no", "current_company": "Acme",
+                    "salary": "120000", "country": "United States",
+                }}, token)
+                popup.goto(f"chrome-extension://{extension_id}/options.html")
+                popup.locator("select[name=gender]").select_option("woman")
+                popup.locator("select[name=veteran]").select_option("no")
+                popup.locator("select[name=hispanic]").select_option("decline")
+                popup.locator("select[name=race]").select_option("white")
+                popup.get_by_role("button", name="Save").click()
+                popup.get_by_text("Saved.", exact=True).wait_for(timeout=5000)
+                check(
+                    "demographic answers stay in this browser",
+                    popup.evaluate("chrome.storage.local.get('demographics').then(r => r.demographics.gender)") == "woman",
+                )
+
+                ats = context.new_page()
+                ats.goto(f"{site}/ats_form.html")
+                panel = ats.locator("#launchpad-autofill-panel")
+                button = panel.get_by_role("button", name="Autofill this application")
+                button.wait_for(timeout=10000)
+                check("the panel appears on a hiring site", button.is_visible())
+                check("nothing is filled before the click", ats.locator("#first").input_value() == "")
+                button.click()
+                panel.get_by_text("Please review them", exact=False).wait_for(timeout=20000)
+                report = panel.locator("section.panel").inner_text()
+                print("\nPanel report:\n" + report + "\n")
+
+                for selector, value in {"#first": "Ada", "#last": "Tester", "#email": email, "#company": "Acme", "#salary": "120000"}.items():
+                    actual = ats.locator(selector).input_value()
+                    check(f"panel fills {selector}", actual == value, actual)
+                picked = lambda field: ats.locator(f"#{field}").get_attribute("data-selected")
+                check("picks from a searchable dropdown", picked("q-country") == "United States", picked("q-country"))
+                check("answers work authorization", picked("q-auth") == "Yes", picked("q-auth"))
+                check("maps a saved gender to the site's wording", picked("q-gender") == "Female", picked("q-gender"))
+                check("maps a saved veteran answer", picked("q-vet") == "I am not a protected veteran", picked("q-vet"))
+                check("picks a city suggestion", picked("q-city") == "Ann Arbor, Michigan, United States", picked("q-city"))
+                check("leaves an unknown dropdown alone", picked("q-ambiguous") is None)
+                check("never answers a blocked dropdown", picked("q-dob") is None)
+                pressed = lambda root: ats.evaluate(
+                    "root => [...document.querySelectorAll(root + ' button[aria-pressed=true]')].map(b => b.textContent)", root
+                )
+                check("presses the right Yes/No button", pressed("#sponsor") == ["No"], pressed("#sponsor"))
+                check("leaves an unknown Yes/No question", pressed("#other-yesno") == [])
+                check("picks a radio answer", ats.locator("input[name=hispanic][value=d]").is_checked())
+                check("skips a hidden survey", ats.evaluate("[...document.getElementsByName('hidden-survey')].every(r => !r.checked)"))
+                check("never answers a blocked radio question", ats.evaluate("[...document.getElementsByName('age')].every(r => !r.checked)"))
+                check(
+                    "picks one race checkbox",
+                    ats.locator("#race input[name=White]").is_checked() and not ats.locator("#race input[name=Other]").is_checked(),
+                )
+                check(
+                    "picks a race checkbox when labels are siblings",
+                    ats.locator("#eth-2").is_checked() and not ats.locator("#eth-3").is_checked(),
+                )
+                check("a reused checkbox name doesn't merge two questions", not ats.locator("#eth-4").is_checked() and not ats.locator("#oth-2").is_checked())
+                check("finds a location field with an icon-only button", picked("ashby-city") == "Ann Arbor, MI", picked("ashby-city"))
+                check("never ticks a consent box", not ats.locator("#consent").is_checked())
+                check("never fills a blocked text field", ats.locator("#ssn").input_value() == "")
+                check("leaves free-text questions", ats.locator("#why").input_value() == "")
+                resume_name = ats.evaluate("document.getElementById('resume').files[0]?.name")
+                check("attaches the resume to a hidden Attach input", resume_name == "ada_resume.pdf", resume_name)
+                check("the panel lists what it never answers", "Launchpad never answers these" in report and "Social Security Number" in report, report)
+                check("the panel contains no values", email not in report and "120000" not in report, report)
+                check("nothing is submitted by autofill", ats.evaluate("window.__submitted") is False)
+                check("the page cannot read the token", token not in ats.content())
+
+                # Pressing the site's Submit offers tracking.
+                ats.locator("#submit").click()
+                panel.get_by_text("Submitted? Add it to your tracker.").wait_for(timeout=5000)
+                check("guesses the job from the page title", panel.get_by_label("Job title").input_value() == "Staff Engineer" and panel.get_by_label("Company").input_value() == "Fixture Labs")
+                panel.get_by_role("button", name="Add to tracker").click()
+                panel.get_by_text("Added to your tracker.").wait_for(timeout=10000)
+                tracked = api("/function/list_tracker_applications", {"token": token}, token)["data"]["result"]["applications"]
+                check("Submit reaches the tracker", any(t["role"] == "Staff Engineer" and t["company"] == "Fixture Labs" for t in tracked), tracked)
+
+                popup.goto(f"{popup_url}?tab={tab_id}")
+                popup.locator("#main-view").wait_for(state="visible", timeout=15000)
 
                 # Disconnect removes the token.
                 popup.locator("#disconnect").click()
