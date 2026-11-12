@@ -43,6 +43,7 @@ PROTECTED = {
     "sync_user_session": {"token": "x"},
     "save_contact_details": {"token": "x", "phone": "", "city": "", "linkedin": "", "github": "", "portfolio": ""},
     "get_applicant_details": {"token": "x"},
+    "tailor_resume_pdf": {"token": "x", "job_text": "x", "role": "x", "resume_content": ""},
     "list_tracker_applications": {"token": "x"},
     "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
     "set_tracker_status": {"token": "x", "app_id": 1, "status": "Offer"},
@@ -165,6 +166,13 @@ def main() -> int:
     http("/function/save_contact_details", {"token": bob, "email": alice_email, "phone": "555-0199", "city": "", "linkedin": "", "github": "", "portfolio": ""}, bob)
     _, payload, raw = http("/function/get_user_profile_data", {"token": alice}, alice)
     check("another user cannot change contact details", (result(payload).get("user") or {}).get("phone") == "555-0100", raw[:200])
+
+    # Tailoring uses only the caller's own saved resume.
+    _, payload, raw = http("/function/tailor_resume_pdf", {"token": alice, "job_text": "Python SQL", "role": "Engineer", "resume_content": ""}, alice)
+    alice_pdf = result(payload)
+    check("tailoring rejects a resume with no sections", alice_pdf.get("ok") is False and "sections" in str(alice_pdf.get("error")), raw[:200])
+    _, payload, raw = http("/function/tailor_resume_pdf", {"token": bob, "job_text": "Python SQL", "role": "Engineer", "resume_content": ""}, bob)
+    check("another user's tailoring doesn't use this resume", RESUME not in raw and result(payload).get("ok") is False, raw[:200])
 
     # Tracker rows stay with their owner.
     _, payload, raw = http("/function/add_tracker_application", {

@@ -3,7 +3,10 @@
 The resume review is stateless: the server returns only a review of the text it gets.
 """
 
+import base64;
+import re;
 import applicant_web;
+import resume_pdf;
 import from db { list_resumes_by_user }
 import from .auth_sync { _resolve_caller }
 import from .compatibility { resume_text_from_content }
@@ -49,4 +52,46 @@ def:protect get_applicant_details(token: str) -> dict[str, any] {
         return {"ok": False, "error": "Save your profile first."};
     }
     return _applicant_details(user);
+}
+
+"""Make a tailored copy of the user's resume as a PDF (issue #39).
+
+Uses an uploaded resume if one is given, otherwise the newest saved resume. It only
+reorders what the resume already says, and returns the PDF with a list of changes.
+"""
+def _tailor_for(user: dict[str, any], job_text: str, role: str, resume_content: str, conn: any = None) -> dict[str, any] {
+    content = str(resume_content or "");
+    if not content.strip() {
+        resumes = list_resumes_by_user(int(user["id"]), conn=conn);
+        content = str(resumes[0].get("content") or "") if resumes else "";
+    }
+    if not content.strip() {
+        return {"ok": False, "error": "Upload a resume first, here or in your profile."};
+    }
+    try {
+        result = resume_pdf.tailor_resume(content, str(job_text or ""));
+    } except ValueError as e {
+        return {"ok": False, "error": str(e)};
+    } except Exception {
+        return {"ok": False, "error": "Couldn't read that resume. Try a PDF exported from a document, not a scan."};
+    }
+    safe_role = re.sub(r"[^A-Za-z0-9 ._-]+", "", str(role or "")).strip()[:60] or "job";
+    return {
+        "ok": True,
+        "pdf": "data:application/pdf;base64," + base64.b64encode(result["pdf"]).decode("ascii"),
+        "filename": f"Resume - {safe_role}.pdf",
+        "changes": result["changes"]
+    };
+}
+
+def:protect tailor_resume_pdf(token: str, job_text: str, role: str, resume_content: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    user = caller["app_user"];
+    if user is None {
+        return {"ok": False, "error": "Save your profile first."};
+    }
+    return _tailor_for(user, job_text, role, resume_content);
 }

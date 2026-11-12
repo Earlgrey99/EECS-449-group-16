@@ -2,7 +2,7 @@ import from "@jac/runtime" { jacIsLoggedIn, Navigate, useLocation }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
-import from ..services.applicant_demo { review_resume_text, get_applicant_details }
+import from ..services.applicant_demo { review_resume_text, get_applicant_details, tailor_resume_pdf }
 import from ..services.jobs { list_jobs }
 
 def:pub ApplicantTools() -> JsxElement {
@@ -34,6 +34,13 @@ def:pub ApplicantTools() -> JsxElement {
 
     has job_notice: str = "";
     has saved_resume_title: str = "";
+    has upload_name: str = "";
+    has upload_content: str = "";
+    has tailoring: bool = False;
+    has tailor_error: str = "";
+    has tailored_pdf: str = "";
+    has tailored_name: str = "";
+    has tailor_changes: list[str] = [];
 
     # Use the saved profile and resume, so the user doesn't retype them here.
     async def load_saved_details {
@@ -88,6 +95,45 @@ def:pub ApplicantTools() -> JsxElement {
             }
             job_notice = "We couldn't load that job. Paste its description below.";
         }
+    }
+
+    def handle_upload(e: ChangeEvent) {
+        target: any = e.target;
+        files: any = target.files;
+        if not files or not files[0] {
+            return;
+        }
+        file_obj: any = files[0];
+        upload_name = str(file_obj.name);
+        reader: any = Reflect.construct(FileReader, []);
+        reader.onload = lambda (load_ev: any) { upload_content = str(load_ev.target.result); };
+        reader.readAsDataURL(file_obj);
+    }
+
+    async def make_tailored_pdf {
+        tailor_error = "";
+        tailored_pdf = "";
+        tailor_changes = [];
+        if not job_description.strip() {
+            tailor_error = "Paste the job description above first.";
+            return;
+        }
+        tailoring = True;
+        try {
+            tok = str(localStorage.getItem("jac_token") or "");
+            res: any = await tailor_resume_pdf(token=tok, job_text=job_description, role=role, resume_content=upload_content);
+            if res and res.get("ok") {
+                tailored_pdf = str(res.get("pdf"));
+                tailored_name = str(res.get("filename"));
+                changed: list[str] = res.get("changes") or [];
+                tailor_changes = changed;
+            } else {
+                tailor_error = str(res.get("error") if res else "Couldn't create the PDF.");
+            }
+        } except Exception {
+            tailor_error = "Couldn't reach the tailoring service.";
+        }
+        tailoring = False;
     }
 
     def fill_demo() {
@@ -215,6 +261,32 @@ def:pub ApplicantTools() -> JsxElement {
                     <h3 className="mb-3 font-semibold">Job-specific review</h3>
                     <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">{review}</pre>
                 </div>}
+            </section>
+            <section className="rounded-2xl border bg-card p-6 shadow-sm">
+                <div className="mb-6 flex flex-col gap-1">
+                    <h2 className="text-2xl font-semibold">3. Tailored resume PDF</h2>
+                    <p className="text-sm text-muted-foreground">Creates a copy of your resume for the job above. Within each job and project, the most relevant bullets move to the top, and matching skills come first. Nothing is added, removed, or reworded.</p>
+                </div>
+                <div className="flex flex-col gap-4">
+                    <p className="text-sm">{("Resume: " + upload_name) if upload_name else (("Resume: your saved " + saved_resume_title) if saved_resume_title else "No saved resume. Upload one below.")}</p>
+                    <label className="flex flex-col gap-1 text-sm font-medium">Use a different resume (optional)
+                        <input type="file" accept=".pdf,.txt" onChange={handle_upload} className="text-sm font-normal" />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Button type="button" disabled={tailoring} onClick={make_tailored_pdf}>{"Creating PDF..." if tailoring else "Create tailored PDF"}</Button>
+                        {bool(tailored_pdf) and <a href={tailored_pdf} download={tailored_name} className="inline-flex h-9 items-center rounded-lg border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/10">{"Download " + tailored_name}</a>}
+                    </div>
+                    {bool(tailor_error) and <p role="alert" className="text-sm text-red-600">{tailor_error}</p>}
+                    {bool(tailored_pdf) and <div className="rounded-xl border bg-primary/5 p-4 text-sm">
+                        <p className="font-medium">{("What changed" if tailor_changes else "Your resume was already in the best order for this job.")}</p>
+                        <ul className="mt-2 list-disc pl-5">
+                            {for change in tailor_changes {
+                                <li key={change}>{change}</li>
+                            }}
+                        </ul>
+                        <p className="mt-3 text-muted-foreground">Review the PDF before you send it.</p>
+                    </div>}
+                </div>
             </section>
         </main>
         <SiteFooter />
