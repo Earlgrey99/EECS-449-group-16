@@ -84,6 +84,10 @@ def main() -> int:
 
             page.goto(f"{BASE}/me", wait_until="domcontentloaded", timeout=30000)
             page.get_by_text("Personal Information").wait_for(timeout=25000)
+            # A returning user's saved profile must load, not a blank form.
+            page.wait_for_function(
+                "() => document.querySelector('input[placeholder=Ada]')?.value === 'Test'", timeout=20000
+            )
             print("PASS: Profile/onboarding page")
 
             if errors:
