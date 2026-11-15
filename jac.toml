@@ -3,7 +3,7 @@ name = "EECS-449-group-16"
 version = "0.1.0"
 description = "Command-line Jac project"
 entry-point = "main"
-kind = "fullstack"
+kind = "web-app"
 jac-version = "==0.37.11"
 
 [byllm.model]
@@ -80,6 +80,8 @@ shadcn = "latest"
 "class-variance-authority" = "latest"
 "lucide-react" = "latest"
 "sonner" = "latest"
+"@heyputer/puter.js" = "latest"
+react-markdown = "latest"
 
 [dependencies.npm.dev]
 tailwindcss = "latest"

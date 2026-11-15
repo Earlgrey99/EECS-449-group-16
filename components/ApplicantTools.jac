@@ -1,4 +1,4 @@
-import from "@jac/runtime" { jacIsLoggedIn, Navigate, useLocation }
+import from "@jac/runtime" { jacIsLoggedIn, Navigate, useLocation, useNavigate }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
@@ -7,8 +7,9 @@ import from ..services.jobs { list_jobs }
 
 def:pub ApplicantTools() -> JsxElement {
     location = useLocation();
+    nav = useNavigate();
     job_id = decodeURIComponent(location.search.replace("?job=", "").split("&")[0]);
-    if not jacIsLoggedIn() {
+    if not jacIsLoggedIn() and not globalThis.__DEV_AUTO_LOGIN__ {
         return <Navigate to="/login" replace={True} />;
     }
 
@@ -17,6 +18,10 @@ def:pub ApplicantTools() -> JsxElement {
     has email: str = "";
     has phone: str = "";
     has linkedin: str = "";
+    has application_role: str = "";
+    has application_company: str = "";
+    has application_pay: str = "";
+    has application_description: str = "";
     has filled_name: str = "";
     has filled_email: str = "";
     has filled_phone: str = "";
@@ -65,6 +70,17 @@ def:pub ApplicantTools() -> JsxElement {
         job_description = (plain_text(desc) + ("\n\nSkills: " + tags if tags else ""))[:12000];
     }
 
+    def use_application_job(job: any) {
+        title = str(job.get("title") or "");
+        desc = str(job.get("desc") or job.get("description") or "");
+        tags = str(job.get("tags") or "");
+        application_role = title;
+        application_company = str(job.get("company") or "");
+        application_pay = str(job.get("salary") or job.get("salary_text") or "");
+        application_description = plain_text(desc);
+        use_job(title, desc, tags);
+    }
+
     # The jobs page passes the selected job along, which covers external listings.
     # A reloaded or shared link may not have it, so fall back to the built-in jobs.
     async can with entry {
@@ -73,19 +89,33 @@ def:pub ApplicantTools() -> JsxElement {
         }
         did_init_tools = True;
         await load_saved_details();
+        selected_job_raw = localStorage.getItem("jaccit_selected_job");
+        has_selected_job = False;
+        if selected_job_raw {
+            try {
+                selected_job: any = JSON.parse(selected_job_raw);
+                use_application_job(selected_job);
+                localStorage.removeItem("jaccit_selected_job");
+                has_selected_job = True;
+            } except Exception {
+                job_notice = "We couldn't load that job. Paste its description below.";
+            }
+        }
         passed: any = location.state.get("job") if location.state else None;
         if passed {
-            use_job(str(passed.get("title") or ""), str(passed.get("desc") or ""), str(passed.get("tags") or ""));
+            use_application_job(passed);
             return;
         }
         if job_id {
             available_jobs = await list_jobs();
             for j in available_jobs {
                 if str(j["id"]) == job_id {
-                    use_job(str(j["title"]), str(j["desc"]), str(j["tags"]));
+                    use_application_job(j);
                     return;
                 }
             }
+        }
+        if not passed and not has_selected_job {
             job_notice = "We couldn't load that job. Paste its description below.";
         }
     }
@@ -99,11 +129,33 @@ def:pub ApplicantTools() -> JsxElement {
             autofill_message = "Enter a valid email address before filling.";
             return;
         }
+        if not application_role.strip() or not application_company.strip() {
+            autofill_message = "Add a company and job title before tracking this application.";
+            return;
+        }
         filled_name = full_name.strip();
         filled_email = email.strip();
         filled_phone = phone.strip();
         filled_linkedin = linkedin.strip();
-        autofill_message = "Demo form populated. Review or edit the fields below; submission is disabled.";
+        today = new(Date);
+        pending_application = {
+            "role": application_role.strip(),
+            "company": application_company.strip(),
+            "applied_date": today.toISOString()[0:10],
+            "description": application_description.strip() if application_description.strip() else "None found",
+            "pay": application_pay.strip() if application_pay.strip() else "None found",
+            "resume": "None found",
+            "cover_letter": "None found",
+            "status": "Applied"
+        };
+        try {
+            localStorage.setItem("jaccit_tracker_pending_application", JSON.stringify(pending_application));
+        } except Exception {
+            autofill_message = "The form was populated, but the application could not be added to your tracker.";
+            return;
+        }
+        autofill_message = "Demo form populated. Application added to your tracker.";
+        nav("/tracker");
     }
 
     def clear_demo() {
@@ -113,6 +165,11 @@ def:pub ApplicantTools() -> JsxElement {
         filled_linkedin = "";
         autofill_message = "Demo form cleared. Your profile inputs remain above.";
     }
+
+    def handle_application_role(e: ChangeEvent) { application_role = e.target.value; }
+    def handle_application_company(e: ChangeEvent) { application_company = e.target.value; }
+    def handle_application_pay(e: ChangeEvent) { application_pay = e.target.value; }
+    def handle_application_description(e: ChangeEvent) { application_description = e.target.value; }
 
     async def generate_review(e: FormEvent) {
         e.preventDefault();
@@ -159,6 +216,19 @@ def:pub ApplicantTools() -> JsxElement {
                         </label>
                         <label className="flex flex-col gap-1 text-sm font-medium">LinkedIn URL
                             <input className="rounded-lg border bg-background p-3 font-normal" placeholder="https://linkedin.com/in/example" value={linkedin} onChange={lambda (e: ChangeEvent) { linkedin = e.target.value; }} />
+                        </label>
+                        <h3 className="mt-2 font-semibold">Application to track</h3>
+                        <label className="flex flex-col gap-1 text-sm font-medium">Job title
+                            <input className="rounded-lg border bg-background p-3 font-normal" placeholder="Data Analyst" value={application_role} onChange={handle_application_role} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-sm font-medium">Company
+                            <input className="rounded-lg border bg-background p-3 font-normal" placeholder="Cascade Health" value={application_company} onChange={handle_application_company} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-sm font-medium">Pay available
+                            <input className="rounded-lg border bg-background p-3 font-normal" placeholder="84,000" value={application_pay} onChange={handle_application_pay} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-sm font-medium">Job description
+                            <textarea className="min-h-24 rounded-lg border bg-background p-3 font-normal" placeholder="Optional job description" value={application_description} onChange={handle_application_description} />
                         </label>
                         <div className="flex flex-wrap gap-2">
                             <Button onClick={fill_demo}>Autofill demo form</Button>

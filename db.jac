@@ -6,6 +6,17 @@ import os;
 import secrets;
 import sqlite3;
 
+glob LOCAL_DATABASE_PATH: str = ".jac/data/launchpad.db";
+
+def placeholder_oauth_email(oauth_id: str) -> str {
+    digest = hashlib.sha256(oauth_id.encode("utf-8")).hexdigest();
+    return "pending-" + digest + "@launchpad.invalid";
+}
+
+def is_placeholder_oauth_email(email: str | None) -> bool {
+    return bool(email) and str(email).endswith("@launchpad.invalid");
+}
+
 def load_env_file(filepath: str = ".env") -> None {
     if not os.path.exists(filepath) {
         return;
@@ -37,9 +48,11 @@ def get_db_connection(
     token = auth_token or os.environ.get("TURSO_AUTH_TOKEN") or os.environ.get("TURSO_TOKEN");
 
     if not url {
-        raise ValueError(
-            "Database URL must be provided via argument, TURSO_DATABASE_URL or TURSO_URL env var."
-        );
+        url = LOCAL_DATABASE_PATH;
+        local_dir = os.path.dirname(url);
+        if local_dir {
+            os.makedirs(local_dir, exist_ok=True);
+        }
     }
 
     if url == ":memory:" or url.startswith("file:") or url.endswith(".db") {
@@ -177,8 +190,55 @@ def init_db(conn: any = None) {
     if not any(column[1] == "pay" for column in application_columns) {
         db_conn.execute("ALTER TABLE applications ADD COLUMN pay INTEGER;");
     }
+    for application_column in [
+        "resume_pdf_name",
+        "resume_pdf_content",
+        "cover_letter_pdf_name",
+        "cover_letter_pdf_content"
+    ] {
+        if not any(column[1] == application_column for column in application_columns) {
+            db_conn.execute(f"ALTER TABLE applications ADD COLUMN {application_column} TEXT;");
+        }
+    }
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_user ON applications(user_id);");
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);");
+    db_conn.execute("""
+        CREATE TABLE IF NOT EXISTS tracker_status_options (
+            user_id INTEGER NOT NULL,
+            status_name TEXT NOT NULL,
+            color TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            PRIMARY KEY (user_id, status_name),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    """);
+
+    db_conn.execute("""
+        CREATE TABLE IF NOT EXISTS career_chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            major TEXT NOT NULL,
+            career_goal TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    """);
+    db_conn.execute("""
+        CREATE TABLE IF NOT EXISTS career_chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (chat_id) REFERENCES career_chats(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    """);
+    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_career_chats_user_updated ON career_chats(user_id, updated_at);");
+    db_conn.execute("CREATE INDEX IF NOT EXISTS idx_career_chat_messages_chat ON career_chat_messages(chat_id, id);");
 
     db_conn.commit();
 }
@@ -404,11 +464,16 @@ def sync_oauth_user(
     auth_provider: str = "google",
     conn: any = None
 ) -> dict[str, any] {
-    if not email or not email.strip() {
-        raise ValueError("Email cannot be empty.");
+    clean_email = email.strip().lower() if email and email.strip() else "";
+    if not clean_email {
+        if not oauth_id {
+            raise ValueError("Email or OAuth identity is required.");
+        }
+        clean_email = placeholder_oauth_email(oauth_id);
     }
-    clean_email = email.strip().lower();
-    clean_name = name.strip() if name and name.strip() else clean_email.split("@")[0];
+    clean_name = name.strip() if name and name.strip() else (
+        clean_email.split("@")[0] if not is_placeholder_oauth_email(clean_email) else "Google User"
+    );
     db_conn = conn if conn is not None else get_db_connection();
 
     first_name_val = None;
@@ -440,6 +505,15 @@ def sync_oauth_user(
         if oauth_id and not existing_user.get("oauth_id") {
             updates.append("oauth_id = ?");
             params.append(oauth_id);
+        }
+        if (
+            oauth_id
+            and str(existing_user.get("oauth_id") or "") == oauth_id
+            and is_placeholder_oauth_email(existing_user.get("email"))
+            and not is_placeholder_oauth_email(clean_email)
+        ) {
+            updates.append("email = ?");
+            params.append(clean_email);
         }
         if auth_provider and (not existing_user.get("auth_provider") or existing_user.get("auth_provider") == "local") {
             updates.append("auth_provider = ?");
@@ -767,15 +841,23 @@ def create_application(
     applied_date: str | None = None,
     notes: str | None = None,
     pay: int | None = None,
+    resume_pdf_name: str | None = None,
+    resume_pdf_content: str | None = None,
+    cover_letter_pdf_name: str | None = None,
+    cover_letter_pdf_content: str | None = None,
     conn: any = None
 ) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("""
         INSERT INTO applications (
-            user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay));
+            user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay,
+            resume_pdf_name, resume_pdf_content, cover_letter_pdf_name, cover_letter_pdf_content
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay,
+        resume_pdf_name, resume_pdf_content, cover_letter_pdf_name, cover_letter_pdf_content
+    ));
     db_conn.commit();
     app_id = cur.lastrowid;
     app = get_application_by_id(app_id, conn=db_conn);
@@ -825,6 +907,11 @@ def update_application(
     status: str | None = None,
     applied_date: str | None = None,
     notes: str | None = None,
+    pay: int | None = None,
+    resume_pdf_name: str | None = None,
+    resume_pdf_content: str | None = None,
+    cover_letter_pdf_name: str | None = None,
+    cover_letter_pdf_content: str | None = None,
     conn: any = None
 ) -> dict[str, any] | None {
     db_conn = conn if conn is not None else get_db_connection();
@@ -859,6 +946,26 @@ def update_application(
         fields.append("notes = ?");
         vals.append(notes);
     }
+    if pay is not None {
+        fields.append("pay = ?");
+        vals.append(pay);
+    }
+    if resume_pdf_name is not None {
+        fields.append("resume_pdf_name = ?");
+        vals.append(resume_pdf_name);
+    }
+    if resume_pdf_content is not None {
+        fields.append("resume_pdf_content = ?");
+        vals.append(resume_pdf_content);
+    }
+    if cover_letter_pdf_name is not None {
+        fields.append("cover_letter_pdf_name = ?");
+        vals.append(cover_letter_pdf_name);
+    }
+    if cover_letter_pdf_content is not None {
+        fields.append("cover_letter_pdf_content = ?");
+        vals.append(cover_letter_pdf_content);
+    }
     if not fields {
         return get_application_by_id(app_id, conn=db_conn);
     }
@@ -870,10 +977,139 @@ def update_application(
     return get_application_by_id(app_id, conn=db_conn);
 }
 
+def list_tracker_status_options(user_id: int, conn: any = None) -> list[dict[str, any]] {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "SELECT status_name, color FROM tracker_status_options WHERE user_id = ? ORDER BY position ASC",
+        (user_id,)
+    );
+    rows = cur.fetchall();
+    return [{"name": row[0], "color": row[1]} for row in rows];
+}
+
+def replace_tracker_status_options(
+    user_id: int,
+    options: list[dict[str, str]],
+    conn: any = None
+) {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute("DELETE FROM tracker_status_options WHERE user_id = ?", (user_id,));
+    for (position, option) in enumerate(options) {
+        cur.execute(
+            "INSERT INTO tracker_status_options (user_id, status_name, color, position) VALUES (?, ?, ?, ?)",
+            (user_id, option["name"], option["color"], position)
+        );
+    }
+    db_conn.commit();
+}
+
 def delete_application(app_id: int, conn: any = None) -> bool {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("DELETE FROM applications WHERE id = ?", (app_id,));
+    db_conn.commit();
+    return cur.rowcount > 0;
+}
+
+# --- Career Navigator Chat CRUD ---
+
+def list_career_chats(user_id: int, conn: any = None) -> list[dict[str, any]] {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "SELECT id, title, major, career_goal, created_at, updated_at FROM career_chats WHERE user_id = ? ORDER BY updated_at DESC, id DESC",
+        (user_id,)
+    );
+    rows = cur.fetchall();
+    cols = [desc[0] for desc in cur.description];
+    return [dict(zip(cols, row)) for row in rows];
+}
+
+def get_career_chat(user_id: int, chat_id: int, conn: any = None) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "SELECT id, title, major, career_goal, created_at, updated_at FROM career_chats WHERE id = ? AND user_id = ?",
+        (chat_id, user_id)
+    );
+    return row_to_dict(cur, cur.fetchone());
+}
+
+def list_career_chat_messages(
+    user_id: int,
+    chat_id: int,
+    conn: any = None
+) -> list[dict[str, any]] {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "SELECT m.role, m.content, m.created_at FROM career_chat_messages m JOIN career_chats c ON c.id = m.chat_id WHERE c.id = ? AND c.user_id = ? ORDER BY m.id ASC",
+        (chat_id, user_id)
+    );
+    rows = cur.fetchall();
+    cols = [desc[0] for desc in cur.description];
+    return [dict(zip(cols, row)) for row in rows];
+}
+
+def save_career_chat_exchange(
+    user_id: int,
+    chat_id: int | None,
+    title: str,
+    major: str,
+    career_goal: str,
+    user_message: str,
+    assistant_message: str,
+    conn: any = None
+) -> int {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    try {
+        if chat_id is None {
+            cur.execute(
+                "INSERT INTO career_chats (user_id, title, major, career_goal) VALUES (?, ?, ?, ?)",
+                (user_id, title[:100], major, career_goal)
+            );
+            actual_chat_id = int(cur.lastrowid);
+        } else {
+            cur.execute(
+                "SELECT id FROM career_chats WHERE id = ? AND user_id = ?",
+                (chat_id, user_id)
+            );
+            if cur.fetchone() is None {
+                raise ValueError("Conversation not found.");
+            }
+            actual_chat_id = chat_id;
+            cur.execute(
+                "UPDATE career_chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (actual_chat_id,)
+            );
+        }
+        cur.execute(
+            "INSERT INTO career_chat_messages (chat_id, user_id, role, content) VALUES (?, ?, 'user', ?)",
+            (actual_chat_id, user_id, user_message)
+        );
+        cur.execute(
+            "INSERT INTO career_chat_messages (chat_id, user_id, role, content) VALUES (?, ?, 'assistant', ?)",
+            (actual_chat_id, user_id, assistant_message)
+        );
+        db_conn.commit();
+        return actual_chat_id;
+    } except Exception {
+        db_conn.rollback();
+        raise;
+    }
+}
+
+def delete_career_chat(user_id: int, chat_id: int, conn: any = None) -> bool {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "DELETE FROM career_chat_messages WHERE chat_id = ? AND user_id = ?",
+        (chat_id, user_id)
+    );
+    cur.execute("DELETE FROM career_chats WHERE id = ? AND user_id = ?", (chat_id, user_id));
     db_conn.commit();
     return cur.rowcount > 0;
 }

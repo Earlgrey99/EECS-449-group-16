@@ -5,11 +5,11 @@ import from .ui.button { Button }
 import from ..services.tracker {
     list_tracker_applications,
     add_tracker_application,
+    get_tracker_status_options,
+    save_tracker_status_options,
     set_tracker_status,
-    remove_tracker_application
+    edit_tracker_application
 }
-
-glob TRACKER_STATUSES: list[str] = ["Applied", "Interview", "Offer", "Rejected", "Withdrawn"];
 
 def:pub TrackerRow(
     role: str,
@@ -21,45 +21,75 @@ def:pub TrackerRow(
     resume: str,
     cover_letter: str,
     status: str,
+    status_options: list[dict[str, str]],
+    status_color: str,
+    edit_mode: bool,
+    selected_for_edit: bool,
+    onSelection: Callable[[ChangeEvent], None],
     onStatusChange: Callable[[str], None],
-    onRemove: Callable[[], None]
+    onOpenNotes: Callable[[str, str, str], None]
 ) -> JsxElement {
     def handle_status(e: ChangeEvent) {
         onStatusChange(e.target.value);
     }
+    def handle_selection(e: ChangeEvent) {
+        onSelection(e);
+    }
+    def open_notes(e: MouseEvent) {
+        onOpenNotes(role, company, description);
+    }
+    def handle_notes_key(e: KeyboardEvent) {
+        if e.key == "Enter" or e.key == " " {
+            e.preventDefault();
+            onOpenNotes(role, company, description);
+        }
+    }
 
-    return <tr className="border-b last:border-b-0 hover:bg-muted/30">
+    return
+    <tr className="border-b last:border-b-0 hover:bg-muted/30">
+        {edit_mode and <td className="px-3 py-3.5">
+            <input
+                type="checkbox"
+                checked={selected_for_edit}
+                onChange={handle_selection}
+                aria-label={"Select " + role + " at " + company + " to edit"}
+                className="size-4 accent-primary"
+            />
+        </td>}
         <td className="whitespace-nowrap px-4 py-3.5 font-medium text-foreground">
             {bool(job_url) and <a href={job_url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-primary">{company}</a>}
             {(not job_url) and <span>{company}</span>}
         </td>
         <td className="whitespace-nowrap px-4 py-3.5 text-sm">{role}</td>
         <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{applied_date}</td>
-        <td className="max-w-56 truncate px-4 py-3.5 text-sm text-muted-foreground" title={description}>{description}</td>
-        <td className="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums">{pay}</td>
-        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{resume}</td>
-        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{cover_letter}</td>
         <td className="px-4 py-3.5">
             <select
                 value={status}
                 onChange={handle_status}
                 aria-label={"Status for " + company}
-                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                style={{"backgroundColor": status_color, "borderColor": status_color, "color": "#ffffff"}}
+                className="rounded-full border px-3 py-1.5 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-                {for option in TRACKER_STATUSES {
-                    <option key={option} value={option}>{option}</option>
+                {for option in status_options {
+                    <option key={option["name"]} value={option["name"]}>{option["name"]}</option>
                 }}
             </select>
         </td>
-        <td className="px-4 py-3.5 text-right">
+        <td className="w-24 px-4 py-3.5 text-sm">
             <button
-                onClick={onRemove}
-                aria-label={"Remove " + role + " at " + company}
-                className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                type="button"
+                onDoubleClick={open_notes}
+                onKeyDown={handle_notes_key}
+                aria-label={"Open notes for " + role + " at " + company}
+                title="Double-click to read the full description"
+                className="w-full truncate rounded-md border border-border bg-muted/40 px-2 py-1 text-left text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-                Remove
+                Notes
             </button>
         </td>
+        <td className="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums">{pay}</td>
+        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{resume}</td>
+        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-muted-foreground">{cover_letter}</td>
     </tr>;
 }
 
@@ -73,13 +103,34 @@ def:pub TrackerPage() -> JsxElement {
     has action_error: str = "";
     has did_load: bool = False;
     has current_view: str = "table";
+    has notes_open: bool = False;
+    has note_title: str = "";
+    has note_description: str = "";
     has show_form: bool = False;
+    has edit_mode: bool = False;
+    has selected_application_ids: list[int] = [];
+    has edit_drafts: list[dict[str, any]] = [];
+    has status_options: list[dict[str, str]] = [
+        {"name": "Applied", "color": "#64748b"},
+        {"name": "Interview", "color": "#2563eb"},
+        {"name": "Offer", "color": "#16a34a"},
+        {"name": "Rejected", "color": "#dc2626"},
+        {"name": "Withdrawn", "color": "#78716c"}
+    ];
     has new_role: str = "";
     has new_company: str = "";
     has new_date: str = "";
     has new_description: str = "";
     has new_pay: str = "";
     has new_status: str = "Applied";
+    has new_resume_pdf_name: str = "";
+    has new_resume_pdf_content: str = "";
+    has new_cover_letter_pdf_name: str = "";
+    has new_cover_letter_pdf_content: str = "";
+    has reading_pdf: str = "";
+    has edit_error: str = "";
+    has new_status_name: str = "";
+    has new_status_color: str = "#0f766e";
     has form_error: str = "";
     has show_widget_manager: bool = False;
     has active_widgets: list[str] = ["total", "progress", "offers", "response", "status", "flow"];
@@ -114,6 +165,19 @@ def:pub TrackerPage() -> JsxElement {
         return len([app for app in applications if str(app["status"]) == status]);
     }
 
+    def status_color_for(status: str) -> str {
+        for option in status_options {
+            if option["name"] == status {
+                return option["color"];
+            }
+        }
+        return "#64748b";
+    }
+
+    def status_in_use(status: str) -> bool {
+        return any([str(app["status"]) == status for app in applications]);
+    }
+
     def session_token -> str {
         try {
             return str(localStorage.getItem("jac_token") or "");
@@ -128,9 +192,49 @@ def:pub TrackerPage() -> JsxElement {
         }
         did_load = True;
         try {
+            options_res: any = await get_tracker_status_options(token=session_token());
+            if options_res and options_res.get("ok") {
+                status_options = options_res.get("options") or status_options;
+                if status_options and new_status not in [option["name"] for option in status_options] {
+                    new_status = status_options[0]["name"];
+                }
+            } else {
+                action_error = str(options_res.get("error") if options_res else "Could not load tracker status options.");
+            }
             res: any = await list_tracker_applications(token=session_token());
             if res and res.get("ok") {
-                loaded: any = res.get("applications");
+                loaded: list[dict[str, str | int]] = res.get("applications") or [];
+                pending_raw = localStorage.getItem("jaccit_tracker_pending_application");
+                if pending_raw {
+                    try {
+                        pending: any = JSON.parse(pending_raw);
+                        applied_date = str(pending.get("applied_date") or pending.get("date") or "");
+                        date_parts = applied_date.split("-");
+                        if len(date_parts) == 3 and len(date_parts[0]) != 4 {
+                            applied_date = date_parts[2] + "-" + date_parts[0] + "-" + date_parts[1];
+                        }
+                        pending_res: any = await add_tracker_application(
+                            token=session_token(),
+                            role=str(pending.get("role") or ""),
+                            company=str(pending.get("company") or ""),
+                            applied_date=applied_date,
+                            description=str(pending.get("description") or ""),
+                            pay=None,
+                            status=str(pending.get("status") or "Applied"),
+                            salary_text=str(pending.get("pay") or "")
+                        );
+                        if pending_res and pending_res.get("ok") {
+                            if not pending_res.get("already_tracked") {
+                                loaded = [pending_res.get("application")] + loaded;
+                            }
+                            localStorage.removeItem("jaccit_tracker_pending_application");
+                        } else {
+                            action_error = str(pending_res.get("error") if pending_res else "Could not save the pending application.");
+                        }
+                    } except Exception {
+                        action_error = "Could not save the pending application.";
+                    }
+                }
                 applications = loaded;
             } else {
                 action_error = str(res.get("error") if res else "Could not load your applications.");
@@ -155,23 +259,13 @@ def:pub TrackerPage() -> JsxElement {
         }
     }
 
-    async def remove_application(app_id: int) {
-        action_error = "";
-        try {
-            res: any = await remove_tracker_application(token=session_token(), app_id=app_id);
-            if res and res.get("ok") {
-                applications = [app for app in applications if int(app["id"]) != app_id];
-            } else {
-                action_error = str(res.get("error") if res else "Could not remove the application.");
-            }
-        } except Exception {
-            action_error = "Could not remove the application.";
-        }
-    }
-
     async def add_application() {
         if not new_role.strip() or not new_company.strip() or not new_date {
             form_error = "Company, job title, and application date are required.";
+            return;
+        }
+        if reading_pdf {
+            form_error = "Wait for the selected PDF to finish reading.";
             return;
         }
         if new_pay and not new_pay.isdigit() {
@@ -186,7 +280,11 @@ def:pub TrackerPage() -> JsxElement {
                 applied_date=new_date,
                 description=new_description.strip(),
                 pay=int(new_pay) if new_pay else None,
-                status=new_status
+                status=new_status,
+                resume_pdf_name=new_resume_pdf_name,
+                resume_pdf_content=new_resume_pdf_content,
+                cover_letter_pdf_name=new_cover_letter_pdf_name,
+                cover_letter_pdf_content=new_cover_letter_pdf_content
             );
             if not res or not res.get("ok") {
                 form_error = str(res.get("error") if res else "Could not save the application.");
@@ -205,7 +303,11 @@ def:pub TrackerPage() -> JsxElement {
         new_date = "";
         new_description = "";
         new_pay = "";
-        new_status = "Applied";
+        new_status = status_options[0]["name"] if status_options else "Applied";
+        new_resume_pdf_name = "";
+        new_resume_pdf_content = "";
+        new_cover_letter_pdf_name = "";
+        new_cover_letter_pdf_content = "";
         form_error = "";
         show_form = False;
     }
@@ -216,6 +318,289 @@ def:pub TrackerPage() -> JsxElement {
     def handle_description(e: ChangeEvent) { new_description = e.target.value; }
     def handle_pay(e: ChangeEvent) { new_pay = e.target.value; }
     def handle_new_status(e: ChangeEvent) { new_status = e.target.value; }
+    def handle_new_status_name(e: ChangeEvent) { new_status_name = e.target.value; }
+    def handle_new_status_color(e: ChangeEvent) { new_status_color = e.target.value; }
+    def open_application_notes(role: str, company: str, description: str) {
+        note_title = role + " at " + company;
+        note_description = description;
+        notes_open = True;
+    }
+    def close_application_notes(e: MouseEvent) {
+        notes_open = False;
+    }
+    def close_application_notes_on_escape(e: KeyboardEvent) {
+        if e.key == "Escape" {
+            notes_open = False;
+        }
+    }
+
+    def update_edit_draft(app_id: int, changes: dict[str, any]) {
+        edit_drafts = [
+            {**draft, **changes} if int(draft["id"]) == app_id else draft
+            for draft in edit_drafts
+        ];
+    }
+
+    def edit_field_handler(app_id: int, field: str) -> Callable[[ChangeEvent], None] {
+        def handle_edit_field(e: ChangeEvent) {
+            changes: dict[str, any] = {};
+            changes[field] = e.target.value;
+            update_edit_draft(app_id, changes);
+        }
+        return handle_edit_field;
+    }
+
+    def edit_resume_handler(app_id: int) -> Callable[[ChangeEvent], None] {
+        return lambda (e: ChangeEvent) { handle_edit_resume_pdf(app_id, e); };
+    }
+
+    def edit_cover_letter_handler(app_id: int) -> Callable[[ChangeEvent], None] {
+        return lambda (e: ChangeEvent) { handle_edit_cover_letter_pdf(app_id, e); };
+    }
+
+    def clear_resume_handler(app_id: int) -> Callable[[], None] {
+        return lambda { update_edit_draft(app_id, {"resume_name": "", "resume_content": "", "clear_resume": True}); };
+    }
+
+    def clear_cover_letter_handler(app_id: int) -> Callable[[], None] {
+        return lambda { update_edit_draft(app_id, {"cover_letter_name": "", "cover_letter_content": "", "clear_cover_letter": True}); };
+    }
+
+    def handle_selection(app_id: int, e: ChangeEvent) {
+        is_checked: bool = e.target.checked;
+        if is_checked and app_id not in selected_application_ids {
+            selected_application_ids = selected_application_ids + [app_id];
+        } elif not is_checked {
+            selected_application_ids = [selected_id for selected_id in selected_application_ids if selected_id != app_id];
+        }
+    }
+
+    def toggle_edit_mode() {
+        edit_mode = not edit_mode;
+        selected_application_ids = [];
+        edit_drafts = [];
+        edit_error = "";
+    }
+
+    def read_pdf_file(
+        e: ChangeEvent,
+        on_read: Callable[[str, str], None],
+        on_error: Callable[[str], None]
+    ) {
+        target: any = e.target;
+        files: any = target.files;
+        if not files or len(files) == 0 {
+            return;
+        }
+        file_obj: any = files[0];
+        file_name = str(file_obj.name or "");
+        if not file_name.lower().endswith(".pdf") or int(file_obj.size or 0) > 2097152 {
+            on_error("Choose a PDF file that is 2 MB or smaller.");
+            target.value = "";
+            return;
+        }
+        if file_obj.type and file_obj.type != "application/pdf" {
+            on_error("Choose a PDF file.");
+            target.value = "";
+            return;
+        }
+        reader: any = None;
+        try {
+            reader = Reflect.construct(FileReader, []);
+        } except Exception {
+            on_error("Your browser could not read this PDF.");
+            return;
+        }
+        reading_pdf = file_name;
+        reader.onload = lambda (load_ev: any) {
+            data_url = str(load_ev.target.result or "");
+            if not data_url.startswith("data:application/pdf;base64,") {
+                on_error("The selected file could not be read as a PDF.");
+                reading_pdf = "";
+                return;
+            }
+            on_read(file_name, data_url);
+            reading_pdf = "";
+        };
+        reader.onerror = lambda (error_ev: any) {
+            on_error("Your browser could not read this PDF.");
+            reading_pdf = "";
+        };
+        reader.readAsDataURL(file_obj);
+    }
+
+    def handle_new_resume_pdf(e: ChangeEvent) {
+        read_pdf_file(
+            e,
+            lambda (name: str, content: str) {
+                new_resume_pdf_name = name;
+                new_resume_pdf_content = content;
+                form_error = "";
+            },
+            lambda (message: str) { form_error = message; }
+        );
+    }
+
+    def handle_new_cover_letter_pdf(e: ChangeEvent) {
+        read_pdf_file(
+            e,
+            lambda (name: str, content: str) {
+                new_cover_letter_pdf_name = name;
+                new_cover_letter_pdf_content = content;
+                form_error = "";
+            },
+            lambda (message: str) { form_error = message; }
+        );
+    }
+
+    def handle_edit_resume_pdf(app_id: int, e: ChangeEvent) {
+        read_pdf_file(
+            e,
+            lambda (name: str, content: str) {
+                update_edit_draft(app_id, {"resume_name": name, "resume_content": content, "clear_resume": False});
+                edit_error = "";
+            },
+            lambda (message: str) { edit_error = message; }
+        );
+    }
+
+    def handle_edit_cover_letter_pdf(app_id: int, e: ChangeEvent) {
+        read_pdf_file(
+            e,
+            lambda (name: str, content: str) {
+                update_edit_draft(app_id, {"cover_letter_name": name, "cover_letter_content": content, "clear_cover_letter": False});
+                edit_error = "";
+            },
+            lambda (message: str) { edit_error = message; }
+        );
+    }
+
+    def make_edit_draft(app: dict[str, str | int]) -> dict[str, any] {
+        date_parts = str(app["date"]).split("-");
+        return {
+            "id": int(app["id"]),
+            "role": str(app["role"]),
+            "company": str(app["company"]),
+            "date": date_parts[2] + "-" + date_parts[0] + "-" + date_parts[1] if len(date_parts) == 3 else "",
+            "description": "" if str(app["description"]) == "None found" else str(app["description"]),
+            "pay": str(app["pay"]),
+            "status": str(app["status"]),
+            "resume_name": "" if str(app["resume"]) == "None found" else str(app["resume"]),
+            "resume_content": "",
+            "cover_letter_name": "" if str(app["cover_letter"]) == "None found" else str(app["cover_letter"]),
+            "cover_letter_content": "",
+            "clear_resume": False,
+            "clear_cover_letter": False
+        };
+    }
+
+    def start_selected_edit() {
+        edit_drafts = [make_edit_draft(app) for app in applications if int(app["id"]) in selected_application_ids];
+        edit_error = "";
+    }
+
+    def update_status_color(status: str, color: str) {
+        status_options = [
+            {**option, "color": color} if option["name"] == status else option
+            for option in status_options
+        ];
+    }
+
+    def add_status_option() {
+        name = new_status_name.strip();
+        if not name or len(name) > 40 {
+            edit_error = "Status names must be 1 to 40 characters.";
+            return;
+        }
+        if name.lower() in [option["name"].lower() for option in status_options] {
+            edit_error = "That status already exists.";
+            return;
+        }
+        if len(status_options) >= 20 {
+            edit_error = "You can have up to 20 status options.";
+            return;
+        }
+        status_options = status_options + [{"name": name, "color": new_status_color}];
+        new_status_name = "";
+        edit_error = "";
+    }
+
+    def remove_status_option(status: str) {
+        if status_in_use(status) {
+            edit_error = "Reassign applications before removing a status option.";
+            return;
+        }
+        if len(status_options) <= 1 {
+            edit_error = "Keep at least one status option.";
+            return;
+        }
+        status_options = [option for option in status_options if option["name"] != status];
+        edit_error = "";
+    }
+
+    async def save_edit() {
+        if reading_pdf {
+            edit_error = "Wait for the selected PDF to finish reading.";
+            return;
+        }
+        if not edit_drafts {
+            edit_error = "Select at least one application to edit.";
+            return;
+        }
+        for draft in edit_drafts {
+            if not str(draft["role"]).strip() or not str(draft["company"]).strip() or not str(draft["date"]) {
+                edit_error = "Each selected application needs a company, job title, and application date.";
+                return;
+            }
+            if str(draft["pay"]) and not str(draft["pay"]).isdigit() {
+                edit_error = "Pay available must be a whole number for each application.";
+                return;
+            }
+            if str(draft["status"]) not in [option["name"] for option in status_options] {
+                edit_error = "Choose a valid status for each application.";
+                return;
+            }
+        }
+        edit_error = "";
+        try {
+            options_res: any = await save_tracker_status_options(token=session_token(), options=status_options);
+            if not options_res or not options_res.get("ok") {
+                edit_error = str(options_res.get("error") if options_res else "Could not save status options.");
+                return;
+            }
+            status_options = options_res.get("options") or status_options;
+            for draft in edit_drafts {
+                app_id = int(draft["id"]);
+                res: any = await edit_tracker_application(
+                    token=session_token(),
+                    app_id=app_id,
+                    role=str(draft["role"]).strip(),
+                    company=str(draft["company"]).strip(),
+                    applied_date=str(draft["date"]),
+                    description=str(draft["description"]).strip(),
+                    pay=int(str(draft["pay"])) if str(draft["pay"]) else 0,
+                    status=str(draft["status"]),
+                    resume_pdf_name=str(draft["resume_name"]) if draft["resume_content"] else "",
+                    resume_pdf_content=str(draft["resume_content"]),
+                    cover_letter_pdf_name=str(draft["cover_letter_name"]) if draft["cover_letter_content"] else "",
+                    cover_letter_pdf_content=str(draft["cover_letter_content"]),
+                    clear_resume_pdf=bool(draft["clear_resume"]),
+                    clear_cover_letter_pdf=bool(draft["clear_cover_letter"])
+                );
+                if not res or not res.get("ok") {
+                    edit_error = "Could not save " + str(draft["role"]) + " at " + str(draft["company"]) + ": " + str(res.get("error") if res else "Unknown error.");
+                    return;
+                }
+                updated_app: any = res.get("application");
+                applications = [updated_app if int(app["id"]) == app_id else app for app in applications];
+            }
+            edit_drafts = [];
+            selected_application_ids = [];
+            edit_mode = False;
+        } except Exception {
+            edit_error = "Could not save your changes.";
+        }
+    }
 
     def csv_cell(value: str) -> str {
         # A leading =, +, -, or @ would run as a formula in a spreadsheet.
@@ -243,12 +628,12 @@ def:pub TrackerPage() -> JsxElement {
     response_rate = int((response_count / total) * 100) if total > 0 else 0;
     pie_segments: list[str] = [];
     pie_offset = 0.0;
-    for status in TRACKER_STATUSES {
+    for option in status_options {
+        status = option["name"];
         status_count = count_status(status);
         if status_count > 0 {
             segment_end = pie_offset + ((status_count / total) * 100);
-            color = "#7c9a92" if status == "Applied" else "#6c8ba1" if status == "Interview" else "#4f806b" if status == "Offer" else "#c77d72" if status == "Rejected" else "#a5a29b";
-            pie_segments.append(color + " " + str(pie_offset) + "% " + str(segment_end) + "%");
+            pie_segments.append(option["color"] + " " + str(pie_offset) + "% " + str(segment_end) + "%");
             pie_offset = segment_end;
         }
     }
@@ -257,9 +642,9 @@ def:pub TrackerPage() -> JsxElement {
     sankey_scale = 200.0 / total if total > 0 else 0.0;
     flow_offset = 0.0;
 
-    return <div className="flex min-h-svh flex-col bg-[#f7f8f6]">
+    return <div className="flex min-h-svh flex-col bg-background text-foreground">
         <TopNav />
-        <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-7 px-6 py-10">
+        <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-7 px-6 py-10" onKeyDown={close_application_notes_on_escape}>
             <header className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex flex-col gap-2">
@@ -267,7 +652,7 @@ def:pub TrackerPage() -> JsxElement {
                         <h1 className="text-3xl font-semibold tracking-tight">Application tracker</h1>
                         <p className="max-w-2xl text-sm text-muted-foreground">Keep every opportunity in one place. Update a status to see your application insights change instantly.</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <a
                             href={"data:text/csv;charset=utf-8," + encodeURIComponent(csv_data)}
                             download="application-tracker.csv"
@@ -275,6 +660,12 @@ def:pub TrackerPage() -> JsxElement {
                         >
                             Export CSV
                         </a>
+                        <Button variant="outline" onClick={toggle_edit_mode} disabled={len(applications) == 0}>
+                            {("Cancel edit" if edit_mode else "Edit")}
+                        </Button>
+                        {edit_mode and <Button onClick={start_selected_edit} disabled={len(selected_application_ids) == 0}>
+                            {"Edit selected (" + str(len(selected_application_ids)) + ")"}
+                        </Button>}
                         <Button onClick={lambda { show_form = not show_form; form_error = ""; }}>
                             <span className="mr-1 text-base">+</span> Add application
                         </Button>
@@ -314,16 +705,111 @@ def:pub TrackerPage() -> JsxElement {
                     <input value={new_description} onChange={handle_description} placeholder="Description" aria-label="Job description" className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
                     <input type="number" min="0" step="1" value={new_pay} onChange={handle_pay} placeholder="Pay available" aria-label="Pay available" className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
                     <select value={new_status} onChange={handle_new_status} aria-label="Initial status" className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        {for option in TRACKER_STATUSES {
-                            <option key={option} value={option}>{option}</option>
+                        {for option in status_options {
+                            <option key={option["name"]} value={option["name"]}>{option["name"]}</option>
                         }}
                     </select>
                 </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-sm font-medium">
+                        Resume PDF (optional, max 2 MB)
+                        <input type="file" accept="application/pdf,.pdf" onChange={handle_new_resume_pdf} aria-label="Resume PDF" className="rounded-lg border bg-background px-3 py-2 text-sm font-normal file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:font-medium" />
+                        {bool(new_resume_pdf_name) and <span className="text-xs text-muted-foreground">Selected: {new_resume_pdf_name}</span>}
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm font-medium">
+                        Cover letter PDF (optional, max 2 MB)
+                        <input type="file" accept="application/pdf,.pdf" onChange={handle_new_cover_letter_pdf} aria-label="Cover letter PDF" className="rounded-lg border bg-background px-3 py-2 text-sm font-normal file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:font-medium" />
+                        {bool(new_cover_letter_pdf_name) and <span className="text-xs text-muted-foreground">Selected: {new_cover_letter_pdf_name}</span>}
+                    </label>
+                </div>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-sm text-destructive">{form_error}</p>
+                    <p role="alert" className="text-sm text-destructive">{form_error or ("Reading " + reading_pdf if reading_pdf else "")}</p>
                     <div className="flex gap-2">
                         <Button variant="ghost" onClick={lambda { show_form = False; form_error = ""; }}>Cancel</Button>
                         <Button onClick={add_application}>Save application</Button>
+                    </div>
+                </div>
+            </section>}
+
+            {edit_drafts and <section className="rounded-2xl border border-primary/30 bg-card p-5 shadow-sm">
+                <div className="mb-4">
+                    <h2 className="font-semibold">Edit selected applications</h2>
+                    <p className="text-sm text-muted-foreground">Edit each selected application independently, then save them together.</p>
+                </div>
+                <div className="grid gap-4">
+                    {for draft in edit_drafts {
+                        draft_id = int(draft["id"]);
+                        <article key={str(draft_id)} className="rounded-xl border p-4">
+                            <h3 className="mb-3 font-medium">{str(draft["role"]) + " at " + str(draft["company"])}</h3>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                <input value={str(draft["role"])} onChange={edit_field_handler(draft_id, "role")} placeholder="Job title" aria-label={"Edit job title for " + str(draft["company"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                                <input value={str(draft["company"])} onChange={edit_field_handler(draft_id, "company")} placeholder="Company" aria-label={"Edit company for " + str(draft["role"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                                <input type="date" value={str(draft["date"])} onChange={edit_field_handler(draft_id, "date")} aria-label={"Edit applied date for " + str(draft["company"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                                <input value={str(draft["description"])} onChange={edit_field_handler(draft_id, "description")} placeholder="Description" aria-label={"Edit job description for " + str(draft["company"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                                <input type="number" min="0" step="1" value={str(draft["pay"])} onChange={edit_field_handler(draft_id, "pay")} placeholder="Pay available" aria-label={"Edit pay for " + str(draft["company"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                                <select value={str(draft["status"])} onChange={edit_field_handler(draft_id, "status")} aria-label={"Edit status for " + str(draft["company"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    {for option in status_options {
+                                        <option key={option["name"]} value={option["name"]}>{option["name"]}</option>
+                                    }}
+                                </select>
+                            </div>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <label className="flex flex-col gap-1 text-sm font-medium">
+                                    Resume PDF
+                                    <input type="file" accept="application/pdf,.pdf" onChange={edit_resume_handler(draft_id)} aria-label={"Replace resume PDF for " + str(draft["company"])} className="rounded-lg border bg-background px-3 py-2 text-sm font-normal file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:font-medium" />
+                                    <span className="text-xs text-muted-foreground">{str(draft["resume_name"]) if draft["resume_name"] else "No resume PDF attached"}</span>
+                                    {bool(draft["resume_name"]) and <button type="button" onClick={clear_resume_handler(draft_id)} className="w-fit text-xs text-destructive underline">Remove attached resume</button>}
+                                </label>
+                                <label className="flex flex-col gap-1 text-sm font-medium">
+                                    Cover letter PDF
+                                    <input type="file" accept="application/pdf,.pdf" onChange={edit_cover_letter_handler(draft_id)} aria-label={"Replace cover letter PDF for " + str(draft["company"])} className="rounded-lg border bg-background px-3 py-2 text-sm font-normal file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:font-medium" />
+                                    <span className="text-xs text-muted-foreground">{str(draft["cover_letter_name"]) if draft["cover_letter_name"] else "No cover letter PDF attached"}</span>
+                                    {bool(draft["cover_letter_name"]) and <button type="button" onClick={clear_cover_letter_handler(draft_id)} className="w-fit text-xs text-destructive underline">Remove attached cover letter</button>}
+                                </label>
+                            </div>
+                        </article>
+                    }}
+                </div>
+                <div className="mt-5 border-t pt-4">
+                    <h3 className="font-medium">Status dropdown options</h3>
+                    <p className="mb-3 text-xs text-muted-foreground">Choose a color for each status or add and remove choices. Reassign applications before removing a status in use.</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {for option in status_options {
+                            <div key={option["name"]} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                                <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                                    <span className="size-3 shrink-0 rounded-full" style={{"backgroundColor": option["color"]}} />
+                                    <span className="truncate">{option["name"]}</span>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={option["color"]}
+                                        aria-label={"Color for " + option["name"]}
+                                        onChange={lambda (e: ChangeEvent) { update_status_color(option["name"], e.target.value); }}
+                                        className="h-8 w-10 cursor-pointer rounded border bg-background p-1"
+                                    />
+                                    <button
+                                        type="button"
+                                        disabled={status_in_use(option["name"]) or len(status_options) <= 1}
+                                        aria-label={"Remove status " + option["name"]}
+                                        onClick={lambda { remove_status_option(option["name"]); }}
+                                        className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                                    >Remove</button>
+                                </div>
+                            </div>
+                        }}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <input value={new_status_name} onChange={handle_new_status_name} placeholder="New status name" aria-label="New status name" maxLength={40} className="h-9 min-w-44 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                        <input type="color" value={new_status_color} onChange={handle_new_status_color} aria-label="New status color" className="h-9 w-12 cursor-pointer rounded border bg-background p-1" />
+                        <Button variant="outline" onClick={add_status_option}>Add status</Button>
+                    </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <p role="alert" className="text-sm text-destructive">{edit_error or ("Reading " + reading_pdf if reading_pdf else "")}</p>
+                    <div className="flex gap-2">
+                        <Button variant="ghost" onClick={lambda { edit_drafts = []; edit_error = ""; }}>Cancel</Button>
+                        <Button onClick={save_edit}>Save all changes</Button>
                     </div>
                 </div>
             </section>}
@@ -340,15 +826,15 @@ def:pub TrackerPage() -> JsxElement {
                     <table className="w-full min-w-[640px] border-collapse text-left">
                         <thead>
                             <tr className="border-b bg-muted/30 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {edit_mode and <th className="px-3 py-3"><span className="sr-only">Select</span></th>}
                                 <th className="px-4 py-3">Company name</th>
                                 <th className="px-4 py-3">Job title</th>
                                 <th className="px-4 py-3">Date applied</th>
-                                <th className="px-4 py-3">Description</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Notes</th>
                                 <th className="px-4 py-3">Pay available</th>
                                 <th className="px-4 py-3">Resume PDF used</th>
                                 <th className="px-4 py-3">Cover letter</th>
-                                <th className="px-4 py-3">Status</th>
-                                <th className="px-4 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -364,15 +850,49 @@ def:pub TrackerPage() -> JsxElement {
                                     resume={str(app["resume"])}
                                     cover_letter={str(app["cover_letter"])}
                                     status={str(app["status"])}
+                                    status_options={status_options}
+                                    status_color={status_color_for(str(app["status"]))}
+                                    edit_mode={edit_mode}
+                                    selected_for_edit={int(app["id"]) in selected_application_ids}
+                                    onSelection={lambda (e: ChangeEvent) { handle_selection(int(app["id"]), e); }}
                                     onStatusChange={lambda (selected: str) { set_status(int(app["id"]), selected); }}
-                                    onRemove={lambda { remove_application(int(app["id"])); }}
+                                    onOpenNotes={open_application_notes}
                                 />
                             }}
-                            {total == 0 and <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-muted-foreground">{("Loading your applications..." if loading else "No applications yet. Add one to start building your tracker.")}</td></tr>}
+                            {total == 0 and <tr><td colSpan={9 if edit_mode else 8} className="px-4 py-12 text-center text-sm text-muted-foreground">{("Loading your applications..." if loading else "No applications yet. Add one to start building your tracker.")}</td></tr>}
                         </tbody>
                     </table>
                 </div>
             </section>}
+
+            {notes_open and <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
+                <aside
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={"Notes for " + note_title}
+                    tabIndex={-1}
+                    autoFocus={True}
+                    className="flex h-full w-full max-w-xl flex-col border-l border-border bg-background text-foreground shadow-2xl"
+                >
+                    <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Application notes</p>
+                            <h2 className="mt-1 text-lg font-semibold">{note_title}</h2>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={close_application_notes}
+                            aria-label="Close notes"
+                            className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            Close
+                        </button>
+                    </div>
+                    <div className="overflow-y-auto px-6 py-5">
+                        <p className="whitespace-pre-wrap break-words text-sm leading-6">{note_description}</p>
+                    </div>
+                </aside>
+            </div>}
 
             {current_view == "insights" and <div className="flex flex-col gap-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -457,24 +977,24 @@ def:pub TrackerPage() -> JsxElement {
                                 </div>
                             </div>
                             <div className="flex flex-col gap-3">
-                                {for status in TRACKER_STATUSES {
-                                    color = "#7c9a92" if status == "Applied" else "#6c8ba1" if status == "Interview" else "#4f806b" if status == "Offer" else "#c77d72" if status == "Rejected" else "#a5a29b";
+                                {for option in status_options {
+                                    status = option["name"];
                                     <div key={status} className="flex min-w-32 items-center justify-between gap-5 text-sm">
-                                        <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{"background": color}} />{status}</span>
+                                        <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{"background": option["color"]}} />{status}</span>
                                         <span className="font-medium tabular-nums">{count_status(status)}</span>
                                     </div>
                                 }}
                             </div>
                         </div>}
                         {status_visualization == "bar" and <div className="flex flex-col gap-4">
-                            {for status in TRACKER_STATUSES {
+                            {for option in status_options {
+                                status = option["name"];
                                 status_count = count_status(status);
                                 bar_width = (status_count / total) * 100 if total > 0 else 0;
-                                color = "#7c9a92" if status == "Applied" else "#6c8ba1" if status == "Interview" else "#4f806b" if status == "Offer" else "#c77d72" if status == "Rejected" else "#a5a29b";
                                 <div key={status} className="flex items-center gap-3">
                                     <span className="w-24 shrink-0 text-sm text-muted-foreground">{status}</span>
                                     <div className="h-3 flex-1 overflow-hidden rounded-full bg-muted">
-                                        <div className="h-full rounded-full transition-all" style={{"width": str(bar_width) + "%", "background": color}} />
+                                        <div className="h-full rounded-full transition-all" style={{"width": str(bar_width) + "%", "background": option["color"]}} />
                                     </div>
                                     <span className="w-8 text-right text-sm font-medium tabular-nums">{status_count}</span>
                                 </div>
@@ -490,11 +1010,12 @@ def:pub TrackerPage() -> JsxElement {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {for status in TRACKER_STATUSES {
+                                    {for option in status_options {
+                                        status = option["name"];
                                         status_count = count_status(status);
                                         status_share = int((status_count / total) * 100) if total > 0 else 0;
                                         <tr key={status} className="border-b last:border-b-0">
-                                            <td className="py-3">{status}</td>
+                                            <td className="py-3"><span className="inline-flex items-center gap-2"><span className="size-2.5 rounded-full" style={{"background": option["color"]}} />{status}</span></td>
                                             <td className="py-3 text-right tabular-nums">{status_count}</td>
                                             <td className="py-3 text-right tabular-nums">{status_share}%</td>
                                         </tr>
@@ -513,13 +1034,14 @@ def:pub TrackerPage() -> JsxElement {
                             <svg viewBox="0 0 540 260" className="min-w-[480px] w-full" role="img" aria-label="Sankey diagram from submitted applications to their current status">
                                 <text x="26" y="16" className="fill-muted-foreground" font-size="11">SUBMITTED</text>
                                 <text x="436" y="16" className="fill-muted-foreground" font-size="11">CURRENT STATUS</text>
-                                {for status in TRACKER_STATUSES {
+                                {for option in status_options {
+                                    status = option["name"];
                                     status_count = count_status(status);
                                     flow_width = status_count * sankey_scale;
                                     destination_y = 30.0 + flow_offset;
                                     ribbon_start = 30.0 + flow_offset + (flow_width / 2);
                                     ribbon_end = destination_y + (flow_width / 2);
-                                    color = "#7c9a92" if status == "Applied" else "#6c8ba1" if status == "Interview" else "#4f806b" if status == "Offer" else "#c77d72" if status == "Rejected" else "#a5a29b";
+                                    color = option["color"];
                                     if status_count > 0 {
                                         <path
                                             key={status + "-flow"}

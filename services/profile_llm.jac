@@ -12,7 +12,9 @@ import from db {
     get_user_by_email,
     get_user_by_id,
     get_user_by_oauth_id,
+    is_placeholder_oauth_email,
     sync_oauth_user,
+    update_user,
     save_contact_details as save_contact_row,
     save_user_profile,
     create_resume,
@@ -202,9 +204,12 @@ def _submit_profile(
     clean_ct = contract_type.strip() if contract_type else "Full-time";
 
 
-    user: any = get_user_by_email(clean_email, conn=actual_conn);
-    if user is None and oauth_id {
+    user: any = None;
+    if oauth_id {
         user = get_user_by_oauth_id(str(oauth_id), auth_provider=auth_provider, conn=actual_conn);
+    }
+    if user is None {
+        user = get_user_by_email(clean_email, conn=actual_conn);
     }
 
     if user is None {
@@ -220,6 +225,21 @@ def _submit_profile(
         } except Exception as err {
             return {"ok": False, "error": f"Failed to initialize user record: {str(err)}"};
         }
+    }
+    if is_placeholder_oauth_email(str(user.get("email") or "")) {
+        conflicting_user = get_user_by_email(clean_email, conn=actual_conn);
+        if conflicting_user is not None and int(conflicting_user["id"]) != int(user["id"]) {
+            return {"ok": False, "error": "This email is already linked to another account."};
+        }
+        updated_email_user = update_user(
+            user_id=int(user["id"]),
+            email=clean_email,
+            conn=actual_conn
+        );
+        if updated_email_user is None {
+            return {"ok": False, "error": "Could not update the account email."};
+        }
+        user = updated_email_user;
     }
     user_id = int(user["id"]);
 
