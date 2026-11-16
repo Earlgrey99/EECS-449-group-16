@@ -29,6 +29,8 @@ import from ..services.profile_llm {
 }
 import from ..services.locations { search_cities }
 
+import from .ResumeProfileEditor { ResumeProfileEditor }
+
 glob POPULAR_SECTORS: list[str] = [
     "Technology & Software",
     "Finance & Banking",
@@ -284,6 +286,16 @@ def:pub UserProfilePage -> JsxElement {
     def handle_linkedin(e: ChangeEvent) { linkedin = e.target.value; }
     def handle_github(e: ChangeEvent) { github = e.target.value; }
     def handle_portfolio(e: ChangeEvent) { portfolio = e.target.value; }
+        # The resume details card calls this when you edit a main link there.
+    def set_link(key: str, value: str) {
+        if key == "github" {
+            github = value;
+        } elif key == "linkedin" {
+            linkedin = value;
+        } else {
+            portfolio = value;
+        }
+    }
     # Assign by index: in client code, {**answers, key: value} uses the literal name "key".
     def set_answer(key: str, value: str) {
         updated = {**answers};
@@ -937,6 +949,13 @@ def:pub UserProfilePage -> JsxElement {
                         </div>
                     </div>
                 </form>
+                {(is_returning_user or step == 3) and <ResumeProfileEditor
+                    on_link_change={set_link}
+                    github={github}
+                    linkedin={linkedin}
+                    portfolio={portfolio}
+                    new_resume_content={resume_content}
+                />}
             </div>}
         </main>
         <SiteFooter />

@@ -18,6 +18,11 @@ import from services.profile_llm {
     save_contact_details,
     save_application_answers
 }
+import from services.resume_profile {
+    get_resume_profile,
+    parse_resume_upload,
+    save_resume_profile
+}
 import from services.tracker {
     list_tracker_applications,
     add_tracker_application,
