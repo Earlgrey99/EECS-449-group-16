@@ -18,6 +18,7 @@ import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from ..services.compatibility { get_resume_match_scores }
+import from ..services.job_ranking { rank_jobs_for_me }
 import from ..services.locations { search_cities }
 import from ..services.tracker { add_tracker_application }
 import from ..lib.utils { format_salary, format_desc }
@@ -54,7 +55,8 @@ def:pub JobCard(
     onSave: Callable[[], None],
     logo: str = "",
     source: str = "",
-    match_score: int = -1
+    match_score: int = -1,
+    reasons: list[str] = []
 ) -> JsxElement {
     sal_display = format_salary(salary);
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
@@ -74,6 +76,7 @@ def:pub JobCard(
             <p className="text-sm text-muted-foreground">{location}</p>
             {bool(sal_display) and <p className="text-sm font-medium tabular-nums">{sal_display}</p>}
             {match_score >= 0 and <Badge variant={("default" if match_score >= 75 else ("secondary" if match_score >= 50 else "outline"))} className="w-fit tabular-nums">{str(match_score) + "% match"}</Badge>}
+             {len(reasons) > 0 and <p className="text-xs text-primary">{"Fits you: " + " · ".join(reasons[:3])}</p>}
             <div className="mt-1 flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
                     {for tag in tags.split(", ")[:2] {
@@ -191,11 +194,27 @@ def:pub JobSearchFeed -> JsxElement {
         if not init_jobs {
             init_jobs = await list_jobs();
         }
+        init_jobs = await rank_for_me(init_jobs);
         jobs = init_jobs;
         tailored_jobs = init_jobs;
         loading = False;
 
         await load_scores(init_jobs);
+    }
+# Ask the server to put the jobs that best fit the profile first.
+    # If that fails for any reason, the jobs stay in their old order.
+    async def rank_for_me(to_rank: list[dict[str, any]]) -> list[dict[str, any]] {
+        if len(to_rank) == 0 {
+            return to_rank;
+        }
+        ranked: any = None;
+        try {
+            ranked = await rank_jobs_for_me(token=session_token(), jobs=to_rank);
+        } except Exception {}
+        if ranked and ranked.get("ok") and ranked.get("jobs") {
+            return ranked.get("jobs");
+        }
+        return to_rank;
     }
 
     def session_token -> str {
@@ -342,7 +361,7 @@ def:pub JobSearchFeed -> JsxElement {
         } except Exception {}
 
         if res and res.get("ok") and isinstance(res.get("jobs"), list) {
-            jobs = res.get("jobs");
+            jobs = await rank_for_me(res.get("jobs"));
         } else {
             jobs = [];
         }
@@ -796,6 +815,7 @@ def:pub JobSearchFeed -> JsxElement {
                                 logo={str(j.get("logo") or j.get("companyLogo") or j.get("company_logo") or "")}
                                 source={str(j.get("source") or j.get("site") or "")}
                                 match_score={card_score(j)}
+                                reasons={j.get("pref_reasons") or []}
                                 active={sel is not None and str(sel.get("id", "")) == str(j.get("id", ""))}
                                 saved={is_saved(j)}
                                 onSelect={lambda { selected_id = str(j.get("id", "")); }}

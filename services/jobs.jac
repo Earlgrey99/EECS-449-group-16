@@ -9,6 +9,7 @@ import urllib.parse;
 import urllib.request;
 import from db { load_env_file, get_user_by_email }
 import from .auth_sync { _resolve_caller }
+import from .locations { location_matches }
 
 glob JOBS: list[dict[str, str | int]] = [
     {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local", "logo": ""},
@@ -701,7 +702,7 @@ def fetch(
                         break;
                     }
                 } else {
-                    if job_loc and (loc_target in job_loc or job_loc in loc_target) {
+                     if location_matches(loc_target, job_loc) {
                         matched_any_loc = True;
                         break;
                     }
@@ -911,7 +912,7 @@ def:pub search_jobs(
                         break;
                     }
                 } else {
-                    if t in j_loc_str or j_loc_str in t {
+                    if location_matches(t, j_loc_str) {
                         matched_loc = True;
                         break;
                     }

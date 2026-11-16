@@ -24,6 +24,7 @@ import from services.resume_profile {
     save_resume_profile
 }
 import from services.job_preferences { get_job_preferences, save_job_preferences }
+import from services.job_ranking { rank_jobs_for_me }
 import from services.tracker {
     list_tracker_applications,
     add_tracker_application,
