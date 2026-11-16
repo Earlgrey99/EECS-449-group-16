@@ -10,6 +10,19 @@ import resume_pdf;
 import from db { list_resumes_by_user }
 import from .auth_sync { _resolve_caller }
 import from .compatibility { resume_text_from_content }
+import from .profile_llm { _read_answers, _details_from }
+
+# What the extension fills, in the order the Applicant Tools page lists it.
+glob CONTACT_FIELDS: list[list[str]] = [
+    ["first_name", "First name"], ["last_name", "Last name"], ["email", "Email"], ["phone", "Phone"],
+    ["location", "City"], ["linkedin", "LinkedIn"], ["github", "GitHub"], ["portfolio", "Website"]
+];
+glob ANSWER_FIELDS: list[list[str]] = [
+    ["work_authorized", "Authorized to work in the US"], ["needs_sponsorship", "Needs visa sponsorship"],
+    ["school", "School"], ["degree", "Degree"], ["major", "Major"], ["grad_year", "Graduation year"],
+    ["current_company", "Current company"], ["current_title", "Current job title"],
+    ["salary", "Salary expectations"], ["start_date", "Earliest start date"], ["country", "Country"]
+];
 
 def:pub review_resume_text(resume_text: str, job_text: str, role: str) -> str {
     try {
@@ -42,6 +55,48 @@ def _applicant_details(user: dict[str, any], conn: any = None) -> dict[str, any]
     };
 }
 
+"""What the extension will fill, and where each value comes from.
+
+Mirrors buildProfile in extension/background.js: a saved value wins, the resume fills
+only blanks, and the email always comes from the account. Demographic answers are kept
+in the extension only, so they are not listed here.
+"""
+def _autofill_rows(fields: list[list[str]], saved: dict[str, any], from_resume: dict[str, any]) -> list[dict[str, str]] {
+    rows: list[dict[str, str]] = [];
+    for field in fields {
+        key = field[0];
+        value = str(saved.get(key) or "").strip();
+        source = "profile";
+        if not value {
+            value = str(from_resume.get(key) or "").strip();
+            source = "resume" if value else "missing";
+        }
+        if value in ["yes", "no"] {
+            value = value.capitalize();
+        }
+        rows.append({"key": key, "label": field[1], "value": value, "source": source});
+    }
+    return rows;
+}
+
+def _autofill_profile(user: dict[str, any], conn: any = None) -> dict[str, any] {
+    resumes = list_resumes_by_user(int(user["id"]), conn=conn);
+    latest = resumes[0] if resumes else None;
+    details = _details_from(latest);
+    saved_contact = {
+        "first_name": user.get("first_name"), "last_name": user.get("last_name"),
+        "email": user.get("email"), "phone": user.get("phone"), "location": user.get("city"),
+        "linkedin": user.get("linkedin"), "github": user.get("github"), "portfolio": user.get("portfolio")
+    };
+    resume_contact = dict(details.get("contact") or {});
+    resume_contact.pop("email", None);
+    return {
+        "contact": _autofill_rows(CONTACT_FIELDS, saved_contact, resume_contact),
+        "answers": _autofill_rows(ANSWER_FIELDS, _read_answers(user), details.get("answers") or {}),
+        "resume_title": str(latest.get("title") or "Saved resume") if latest else ""
+    };
+}
+
 def:protect get_applicant_details(token: str) -> dict[str, any] {
     caller = _resolve_caller(token);
     if not caller["ok"] {
@@ -51,7 +106,9 @@ def:protect get_applicant_details(token: str) -> dict[str, any] {
     if user is None {
         return {"ok": False, "error": "Save your profile first."};
     }
-    return _applicant_details(user);
+    result = _applicant_details(user);
+    result["autofill"] = _autofill_profile(user);
+    return result;
 }
 
 """Make a tailored copy of the user's resume as a PDF (issue #39).

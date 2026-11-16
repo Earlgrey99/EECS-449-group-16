@@ -44,13 +44,14 @@ def main() -> int:
             page.wait_for_url("**/tools?job=3", timeout=20000)
             page.get_by_role("heading", name="Application tools").wait_for(timeout=20000)
 
-            page.get_by_placeholder("Test Applicant").fill("Demo Candidate")
-            page.get_by_placeholder("test@example.com").fill("test@example.com")
-            page.get_by_role("button", name="Autofill demo form").click()
-            assert page.get_by_label("Candidate name").input_value() == "Demo Candidate"
-            assert page.get_by_label("Candidate email").input_value() == "test@example.com"
-            assert page.get_by_role("button", name="Submit application (disabled)").is_disabled()
-            print("PASS: Job -> tools routing, sample autofill, no auto-submission")
+            autofill = page.locator("section[aria-labelledby='autofill-heading']")
+            autofill.get_by_role("heading", name="1. Your autofill profile").wait_for(timeout=20000)
+            autofill.get_by_text("Contact details").wait_for(timeout=20000)
+            email_row = autofill.locator("dl > div", has_text="Email").first
+            assert "@" in email_row.locator("dd").inner_text(), "Autofill profile shows no email"
+            assert autofill.get_by_role("link", name="Edit profile").get_attribute("href") == "/me"
+            assert page.get_by_role("button", name="Autofill demo form").count() == 0
+            print("PASS: Job -> tools routing, autofill profile shows what the extension fills")
 
             page.get_by_role("button", name="Generate resume review").click()
             page.locator("pre").wait_for(timeout=30000)
