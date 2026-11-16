@@ -25,7 +25,58 @@ Python, C++
 """
 
 
+def two_column_pdf() -> bytes:
+    """A resume laid out like many templates: details pushed to the right margin."""
+    import io
+
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    rows = [
+        ("Jamie Rivera", "jamie.r@example.com"),
+        ("12 Main St | Ann Arbor, MI 48104", "734-555-0199"),
+        ("github.com/jrivera/launchpad", ""),
+        ("EDUCATION", ""),
+        ("University of Michigan", "Ann Arbor, MI"),
+        ("B.S. in Data Science", "May 2026"),
+        ("EXPERIENCE", ""),
+        ("Acme Robotics Inc", "Detroit, MI"),
+        ("Data Engineering Intern", "Jun 2025 - Present"),
+        ("- Built dashboards with https://superset.example.org for the ops team.", ""),
+    ]
+    out = io.BytesIO()
+    page = canvas.Canvas(out, pagesize=letter)
+    y = 740
+    for left, right in rows:
+        page.drawString(54, y, left)
+        if right:
+            page.drawRightString(558, y, right)
+        y -= 16
+    page.save()
+    return out.getvalue()
+
+
 class ResumeDetailsTest(unittest.TestCase):
+    def test_reads_a_two_column_pdf(self):
+        found = resume_details("data:application/pdf;base64," + base64.b64encode(two_column_pdf()).decode())
+        self.assertEqual(found["contact"], {
+            "first_name": "Jamie",
+            "last_name": "Rivera",
+            "phone": "734-555-0199",
+            "location": "Ann Arbor, MI",
+            "github": "https://github.com/jrivera",
+        })
+        self.assertEqual(found["answers"]["school"], "University of Michigan")
+        self.assertEqual(found["answers"]["current_company"], "Acme Robotics Inc")
+        self.assertEqual(found["answers"]["current_title"], "Data Engineering Intern")
+        self.assertEqual(found["answers"]["grad_year"], "2026")
+
+    def test_links_in_the_body_are_not_the_applicants(self):
+        text = "Sam Park\nsam@example.com\nPROJECTS\nDashboard\n- Hosted at https://dash.example.org and github.com/acme/dash\n"
+        found = resume_details(text)["contact"]
+        self.assertNotIn("portfolio", found)
+        self.assertNotIn("github", found)
+
     def test_reads_contact_and_education(self):
         found = resume_details(STUDENT)
         self.assertEqual(found["contact"], {
