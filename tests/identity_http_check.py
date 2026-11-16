@@ -43,6 +43,7 @@ PROTECTED = {
     "sync_user_session": {"token": "x"},
     "save_contact_details": {"token": "x", "phone": "", "city": "", "linkedin": "", "github": "", "portfolio": ""},
     "get_applicant_details": {"token": "x"},
+    "save_application_answers": {"token": "x", "answers": {}},
     "list_tracker_applications": {"token": "x"},
     "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
     "set_tracker_status": {"token": "x", "app_id": 1, "status": "Offer"},
@@ -165,6 +166,12 @@ def main() -> int:
     http("/function/save_contact_details", {"token": bob, "email": alice_email, "phone": "555-0199", "city": "", "linkedin": "", "github": "", "portfolio": ""}, bob)
     _, payload, raw = http("/function/get_user_profile_data", {"token": alice}, alice)
     check("another user cannot change contact details", (result(payload).get("user") or {}).get("phone") == "555-0100", raw[:200])
+
+    # Saved answers stay with their owner, and demographic answers never reach the server.
+    _, payload, raw = http("/function/save_application_answers", {"token": alice, "answers": {"school": "Michigan", "gender": "woman"}}, alice)
+    check("server keeps allowed answers and drops demographic ones", result(payload).get("answers") == {"school": "Michigan"}, raw[:200])
+    _, _, raw = http("/function/get_user_profile_data", {"token": bob}, bob)
+    check("another user cannot read saved answers", "Michigan" not in raw, raw[:200])
 
     # Tracker rows stay with their owner.
     _, payload, raw = http("/function/add_tracker_application", {

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Job Application for Staff Engineer at Fixture Labs</title>
+    <style>
+      .select__menu { border: 1px solid #999; }
+      .select__option { padding: 4px; }
+      .field { margin-bottom: 12px; }
+    </style>
+  </head>
+  <body>
+    <form id="application">
+      <div class="field"><label for="first">First Name*</label><input id="first" name="first_name" /></div>
+      <div class="field"><label for="last">Last Name*</label><input id="last" name="last_name" /></div>
+      <div class="field"><label for="email">Email*</label><input id="email" name="email" type="email" /></div>
+      <div class="field"><label for="resume">Attach</label><input id="resume" name="resume" type="file" style="display: none" /></div>
+
+      <div class="field"><label id="q-country-label" for="q-country">Country*</label><div data-select="q-country" data-options="Canada|United States|Mexico"></div></div>
+      <div class="field"><label id="q-auth-label" for="q-auth">Are you legally authorized to work in the United States?*</label><div data-select="q-auth" data-options="Yes|No"></div></div>
+      <div class="field"><label id="q-gender-label" for="q-gender">Gender</label><div data-select="q-gender" data-options="Female|Male|Decline to self-identify"></div></div>
+      <div class="field"><label id="q-vet-label" for="q-vet">Veteran Status</label><div data-select="q-vet" data-options="I am not a protected veteran|I identify as one or more of the classifications of a protected veteran|I don't wish to answer"></div></div>
+      <div class="field"><label id="q-ambiguous-label" for="q-ambiguous">How did you hear about us?</label><div data-select="q-ambiguous" data-options="LinkedIn|Friend"></div></div>
+      <div class="field"><label id="q-dob-label" for="q-dob">Date of birth</label><div data-select="q-dob" data-options="Before 1980|After 1980"></div></div>
+      <div class="field"><label id="q-city-label" for="q-city">Location (City)*</label><div data-select="q-city" data-typeahead="Ann Arbor, Michigan, United States|Annapolis, Maryland"></div></div>
+
+      <!-- Ashby-style Yes/No buttons. -->
+      <div class="field" id="sponsor"><label>Will you now or in the future require sponsorship for employment visa status?</label>
+        <div><input type="checkbox" style="display:none" /><button type="button" aria-pressed="false" data-option="yes">Yes</button><button type="button" aria-pressed="false" data-option="no">No</button></div>
+      </div>
+      <div class="field" id="other-yesno"><label>Have you worked here before?</label>
+        <div><button type="button" aria-pressed="false">Yes</button><button type="button" aria-pressed="false">No</button></div>
+      </div>
+
+      <!-- Lever-style radios, plus a hidden survey for another country. -->
+      <div class="field"><div class="application-label">Are you Hispanic or Latino?</div>
+        <label><input type="radio" name="hispanic" value="y" />Yes</label>
+        <label><input type="radio" name="hispanic" value="n" />No</label>
+        <label><input type="radio" name="hispanic" value="d" />Prefer not to disclose</label>
+      </div>
+      <div class="field" style="display: none"><div class="application-label">Gender (other survey)</div>
+        <label><input type="radio" name="hidden-survey" value="w" />Woman</label>
+        <label><input type="radio" name="hidden-survey" value="m" />Man</label>
+      </div>
+      <div class="field"><div class="application-label">What is your age range?</div>
+        <label><input type="radio" name="age" />Under 30</label>
+        <label><input type="radio" name="age" />30 or older</label>
+      </div>
+
+      <!-- Ashby-style race checkboxes, each with its own name. -->
+      <div class="field" id="race"><label>Race</label>
+        <div><div><label><input type="checkbox" name="Asian or Asian American" />Asian or Asian American</label></div>
+        <div><label><input type="checkbox" name="White" />White</label></div>
+        <div><label><input type="checkbox" name="Other" />Other</label></div></div>
+      </div>
+      <div class="field"><label><input type="checkbox" name="consent" id="consent" />I agree to the privacy policy</label></div>
+
+      <!-- Ashby-style: each checkbox and its label are siblings, inside one fieldset. -->
+      <fieldset class="field" id="ethnicity"><label>Which ethnicity(ies) do you identify with?</label>
+        <div><span><input type="checkbox" id="eth-1" name="ethnicity Asian" /></span><label for="eth-1">Asian or Asian American</label></div>
+        <div><span><input type="checkbox" id="eth-2" name="ethnicity White" /></span><label for="eth-2">White</label></div>
+        <div><span><input type="checkbox" id="eth-3" name="ethnicity Other" /></span><label for="eth-3">Other</label></div>
+        <div><span><input type="checkbox" id="eth-4" name="Prefer not to answer" /></span><label for="eth-4">Prefer not to answer</label></div>
+      </fieldset>
+      <fieldset class="field" id="other-survey"><label>Do you identify as any of these?</label>
+        <div><span><input type="checkbox" id="oth-1" name="Parent" /></span><label for="oth-1">Parent</label></div>
+        <div><span><input type="checkbox" id="oth-2" name="Prefer not to answer" /></span><label for="oth-2">Prefer not to answer</label></div>
+      </fieldset>
+
+      <!-- Ashby-style location: no label link, plus an icon-only toggle button. -->
+      <div class="field" id="ashby-location"><label>Location</label>
+        <div><input role="combobox" aria-autocomplete="list" placeholder="Start typing..." id="ashby-city" /><button type="button" aria-label="Open"></button></div>
+      </div>
+
+      <div class="field"><label for="company">Current company</label><input id="company" name="org" /></div>
+      <div class="field"><label for="salary">Salary expectations</label><input id="salary" name="q9" /></div>
+      <div class="field"><label for="ssn">Social Security Number</label><input id="ssn" name="q10" /></div>
+      <div class="field"><label for="why">Why do you want to work here?</label><textarea id="why"></textarea></div>
+      <button type="submit" id="submit">Submit application</button>
+    </form>
+    <script>
+      window.__submitted = false;
+      document.getElementById("application").addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.__submitted = true;
+      });
+
+      // Behaves like react-select: an input plus a popup that opens on mousedown.
+      document.querySelectorAll("[data-select]").forEach((slot) => {
+        const id = slot.dataset.select;
+        const fixed = slot.dataset.options ? slot.dataset.options.split("|") : null;
+        const typeahead = slot.dataset.typeahead ? slot.dataset.typeahead.split("|") : null;
+        slot.innerHTML =
+          '<div class="select__control"><div class="select__value"></div>' +
+          '<input class="select__input" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off" type="text" id="' + id + '" aria-labelledby="' + id + '-label" /></div>';
+        const control = slot.querySelector(".select__control");
+        const input = slot.querySelector("input");
+        const value = slot.querySelector(".select__value");
+        let menu = null;
+        const close = () => { if (menu) menu.remove(); menu = null; };
+        const open = (options) => {
+          close();
+          menu = document.createElement("div");
+          menu.className = "select__menu";
+          menu.setAttribute("role", "listbox");
+          for (const text of options) {
+            const option = document.createElement("div");
+            option.className = "select__option";
+            option.setAttribute("role", "option");
+            option.textContent = text;
+            option.addEventListener("click", () => {
+              value.textContent = "";
+              const single = document.createElement("span");
+              single.className = "select__single-value";
+              single.textContent = text;
+              value.append(single);
+              input.value = "";
+              input.dataset.selected = text;
+              close();
+            });
+            menu.append(option);
+          }
+          slot.append(menu);
+        };
+        if (fixed) control.addEventListener("mousedown", () => open(fixed));
+        if (typeahead) {
+          input.addEventListener("input", () => {
+            setTimeout(() => {
+              const typed = input.value.toLowerCase();
+              if (typed) open(typeahead.filter((text) => text.toLowerCase().startsWith(typed.slice(0, 3))));
+            }, 200);
+          });
+        }
+      });
+
+      const ashbyCity = document.getElementById("ashby-city");
+      ashbyCity.addEventListener("input", () => {
+        setTimeout(() => {
+          document.querySelectorAll("#ashby-menu").forEach((node) => node.remove());
+          const menu = document.createElement("div");
+          menu.id = "ashby-menu";
+          const option = document.createElement("div");
+          option.setAttribute("role", "option");
+          option.textContent = "Ann Arbor, MI";
+          option.addEventListener("click", () => {
+            ashbyCity.value = "Ann Arbor, MI";
+            ashbyCity.dataset.selected = "Ann Arbor, MI";
+            menu.remove();
+          });
+          menu.append(option);
+          ashbyCity.parentElement.append(menu);
+        }, 150);
+      });
+
+      document.querySelectorAll('button[aria-pressed]').forEach((button) => {
+        button.addEventListener("click", () => {
+          for (const other of button.parentElement.querySelectorAll("button")) other.setAttribute("aria-pressed", "false");
+          button.setAttribute("aria-pressed", "true");
+        });
+      });
+    </script>
+  </body>
+</html>
