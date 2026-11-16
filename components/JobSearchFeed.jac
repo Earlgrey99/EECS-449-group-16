@@ -11,7 +11,7 @@ import from "@hugeicons/core-free-icons" {
 import from .ui.button { Button }
 import from .ui.input { Input }
 import from .ui.badge { Badge }
-import from .ui.card { Card, CardContent }
+import from .ui.card { Card, CardContent, CardFooter }
 import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent }
 import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
@@ -778,8 +778,8 @@ def:pub JobSearchFeed -> JsxElement {
                         }}
                     </section>
                     <section className="lg:col-span-3">
-                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24 max-h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
-                            <CardContent className="flex flex-col gap-4 pt-8 pb-8 overflow-y-auto">
+                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:max-h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
+                            <CardContent className="flex min-h-0 flex-1 flex-col gap-4 pt-8 pb-4 overflow-y-auto">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="flex items-center gap-3 min-w-0">
                                         {bool(str(sel.get("logo") or sel.get("companyLogo") or sel.get("company_logo") or "")) and <img
@@ -825,20 +825,20 @@ def:pub JobSearchFeed -> JsxElement {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
                                     }}
                                 </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
-                                    <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    {is_jooble_job(sel) and <a
-                                        href={get_jooble_link(sel)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-muted hover:text-accent-foreground"
-                                    >
-                                        <span>Full description</span>
-                                        <span aria-hidden="true">&rarr;</span>
-                                    </a>}
-                                </div>
                             </CardContent>
+                            <CardFooter className="shrink-0 flex flex-wrap items-center gap-3">
+                                <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
+                                <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
+                                {is_jooble_job(sel) and <a
+                                    href={get_jooble_link(sel)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-muted hover:text-accent-foreground"
+                                >
+                                    <span>Full description</span>
+                                    <span aria-hidden="true">&rarr;</span>
+                                </a>}
+                            </CardFooter>
                         </Card>}
                     </section>
                 </div>}
