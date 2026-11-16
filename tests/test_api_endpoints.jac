@@ -1,6 +1,6 @@
 """Unit and integration tests for multi-provider API endpoints and unified format."""
 
-import from lib.utils { format_salary, format_desc, is_jooble_job, get_jooble_link }
+import from lib.utils { format_salary, format_desc, is_markdown, is_jooble_job, get_jooble_link }
 
 import json;
 import os;
@@ -454,6 +454,14 @@ test "job listing salary and description formatting and logo extraction" {
     assert formatted == "<p>Engineering role <b>Senior</b></p>";
     plain_desc = "Line 1\nLine 2\nLine 3";
     assert format_desc(plain_desc) == "Line 1<br />Line 2<br />Line 3";
+
+    # Markdown descriptions are detected and rendered into the HTML consumed by
+    # the job-detail panel, while plain text remains plain text.
+    markdown_desc = "## What you'll do\n- Build **reliable** services\n- Review `Python` code";
+    assert is_markdown(markdown_desc) is True;
+    assert is_markdown(plain_desc) is False;
+    assert format_desc(markdown_desc) == "<h2>What you&#x27;ll do</h2><ul><li>Build <strong>reliable</strong> services</li><li>Review <code>Python</code> code</li></ul>";
+    assert format_desc("- <script>alert('xss')</script>") == "<ul><li>&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;</li></ul>";
 
     # Jooble listing identification and description link helpers
     assert is_jooble_job({"source": "jooble", "link": "https://jooble.org/desc/123"}) is True;

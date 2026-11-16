@@ -807,7 +807,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match.get("matched", "")) or "none")}</p>
                                     <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match.get("missing", "")) or "none")}</p>
                                 </div>}
-                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_a]:text-primary [&_a]:underline" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
+                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 [&_h1]:my-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:my-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_a]:text-primary [&_a]:underline" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
                                 {is_jooble_job(sel) and <div className="rounded-lg border border-border/80 bg-muted/40 p-3 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                     <span className="text-xs text-muted-foreground">Listing from Jooble includes a summary snippet only.</span>
                                     <a
