@@ -6,9 +6,10 @@ only when the resume marks it as ongoing ("present", "current", "now").
 """
 from __future__ import annotations
 
+import io
 import re
 
-from resume_pdf import Resume, parse_resume, pdf_text, resume_bytes
+from resume_pdf import Resume, _clean, parse_resume, pdf_text, resume_bytes
 
 MAX_RESUME_BYTES = 5 * 1024 * 1024
 
@@ -20,6 +21,8 @@ URL = re.compile(
 )
 EMAIL = re.compile(r"\S+@\S+\.\S+")
 CITY = re.compile(r"^([A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+){0,3}), ([A-Z]{2}|[A-Z][a-z]+(?: [A-Z][a-z]+)?)$")
+# "City, ST" inside a longer piece of text, such as "Ann Arbor, MI 48104".
+CITY_IN = re.compile(r"(?<![\w])([A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+){0,2}), ([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?(?![\w])")
 YEAR = re.compile(r"\b(19[6-9]\d|20\d\d)\b")
 ONGOING = re.compile(r"\b(present|current|now|ongoing)\b", re.I)
 DATES = re.compile(
@@ -48,13 +51,48 @@ MAJOR = re.compile(
 )
 
 
+Cells = dict[str, list[str]]
+
+
+def _layout_cells(data: bytes) -> Cells:
+    """Map each PDF line to its columns, like ["Acme Inc", "Ann Arbor, MI"].
+
+    Plain text extraction joins a right-aligned location or date onto the line with a
+    single space. Layout extraction keeps the gap, which tells the parts apart.
+    """
+    try:
+        from pypdf import PdfReader
+
+        pages = PdfReader(io.BytesIO(data)).pages
+        text = "\n".join(page.extract_text(extraction_mode="layout") or "" for page in pages)
+    except Exception:
+        return {}
+    cells: Cells = {}
+    for raw in text.splitlines():
+        parts = [_clean(part) for part in re.split(r"\s{3,}", raw.strip()) if part.strip()]
+        if len(parts) > 1:
+            cells[_clean(" ".join(parts))] = parts
+    return cells
+
+
+def _is_place_or_date(cell: str) -> bool:
+    rest = DATES.sub("", cell).strip(" ,|-–—()")
+    return not rest or bool(CITY_IN.fullmatch(cell)) or cell.lower() in ("remote", "hybrid")
+
+
+def _main_part(line: str, cells: Cells) -> str:
+    """The line without a separate location or date column."""
+    kept = [cell for cell in cells.get(line, [line]) if not _is_place_or_date(cell)]
+    return " ".join(kept) if kept else ""
+
+
 def _sections(resume: Resume, *words: str) -> list:
     return [section for section in resume.sections if any(word in section.title.lower() for word in words)]
 
 
-def _contact(resume: Resume, text: str) -> dict[str, str]:
+def _contact(resume: Resume, text: str, cells: Cells) -> dict[str, str]:
     found: dict[str, str] = {}
-    head = "\n".join(resume.header) or text[:600]
+    head = "\n".join("   ".join(cells.get(line, [line])) for line in resume.header) or text[:600]
     phone = PHONE.search(head)
     if phone:
         found["phone"] = phone.group(0).strip()
@@ -62,11 +100,16 @@ def _contact(resume: Resume, text: str) -> dict[str, str]:
         part = part.strip()
         if not part or EMAIL.fullmatch(part):
             continue
-        city = CITY.match(part)
-        if city and "location" not in found and not SCHOOL.search(part):
+        if "location" in found or SCHOOL.search(part) or EMAIL.search(part):
+            continue
+        if CITY.match(part):
             found["location"] = part
-    emails = [match.span() for match in EMAIL.finditer(text[:3000])]
-    for match in URL.finditer(text[:3000]):
+        elif (city := CITY_IN.search(part)):
+            found["location"] = f"{city.group(1)}, {city.group(2)}"
+    # Links are read from the contact lines only: a link inside a project
+    # description belongs to the project, not the applicant.
+    emails = [match.span() for match in EMAIL.finditer(head)]
+    for match in URL.finditer(head):
         if any(begin <= match.start() < stop for begin, stop in emails):
             continue
         link = match.group(1).rstrip("./")
@@ -75,30 +118,35 @@ def _contact(resume: Resume, text: str) -> dict[str, str]:
             if "/in/" in link and "linkedin" not in found:
                 found["linkedin"] = "https://www.linkedin.com" + link[link.index("/in/"):]
         elif host == "github.com":
-            if "/" in link and "github" not in found:
-                found["github"] = "https://" + link
+            user = link.split("/")[1] if "/" in link else ""
+            if user and "github" not in found:
+                found["github"] = "https://github.com/" + user
         elif "portfolio" not in found:
             found["portfolio"] = "https://" + link
     return found
 
 
-def _name(resume: Resume) -> dict[str, str]:
+def _name(resume: Resume, cells: Cells) -> dict[str, str]:
     if not resume.header:
         return {}
-    words = resume.header[0].split()
+    first_line = resume.header[0]
+    name = cells.get(first_line, [first_line])[0]
+    # The name can share its line with an email, phone, or link.
+    name = _clean(PHONE.sub(" ", EMAIL.sub(" ", URL.sub(" ", name))).strip(" |,"))
+    words = name.split()
     if 2 <= len(words) <= 4 and all(re.fullmatch(r"[A-Z][A-Za-z.'-]*", word) for word in words):
         return {"first_name": words[0], "last_name": " ".join(words[1:])}
     return {}
 
 
-def _education(resume: Resume) -> dict[str, str]:
+def _education(resume: Resume, cells: Cells) -> dict[str, str]:
     found: dict[str, str] = {}
     for section in _sections(resume, "education"):
         for entry in section.entries[:1]:
             lines = entry.lines + entry.bullets
             blob = " | ".join(lines)
             for line in lines:
-                for part in re.split(r"\s*[,|–—]\s*|\s{2,}", line):
+                for part in re.split(r"\s*[,|–—]\s*|\s{2,}", _main_part(line, cells) or line):
                     if "school" not in found and SCHOOL.search(part) and len(part) <= 80:
                         found["school"] = DATES.sub("", part).strip(" ,-")
             for name, pattern in DEGREES:
@@ -133,15 +181,20 @@ def _split_role(line: str) -> tuple[str, str]:
     return "", ""
 
 
-def _current_job(resume: Resume) -> dict[str, str]:
+def _current_job(resume: Resume, cells: Cells) -> dict[str, str]:
     for section in _sections(resume, "experience", "employment", "work history"):
         for entry in section.entries[:1]:
-            heading = entry.lines[:2]
+            # A heading is one to four lines: role, company, and often a separate
+            # line or column for the place and dates.
+            heading = entry.lines[:4]
             if not any(ONGOING.search(line) for line in heading):
                 return {}
-            title, company = _split_role(heading[0])
-            if len(heading) > 1 and not (title and company):
-                other_title, other_company = _split_role(heading[1])
+            parts = [part for part in (_main_part(line, cells) for line in heading) if part][:2]
+            if not parts:
+                return {}
+            title, company = _split_role(parts[0])
+            if len(parts) > 1 and not (title and company):
+                other_title, other_company = _split_role(parts[1])
                 title, company = title or other_title, company or other_company
             found = {}
             if title:
@@ -161,9 +214,10 @@ def resume_details(content: str) -> dict:
         text = pdf_text(data) if kind == "pdf" else data.decode("utf-8", errors="replace")
     except Exception:
         return {"contact": {}, "answers": {}}
+    cells = _layout_cells(data) if kind == "pdf" else {}
     resume = parse_resume(text)
-    contact = {**_name(resume), **_contact(resume, text)}
-    answers = {**_education(resume), **_current_job(resume)}
+    contact = {**_name(resume, cells), **_contact(resume, text, cells)}
+    answers = {**_education(resume, cells), **_current_job(resume, cells)}
     return {
         "contact": {key: value[:200] for key, value in contact.items() if value},
         "answers": {key: value[:200] for key, value in answers.items() if value},
