@@ -52,6 +52,8 @@ PROTECTED = {
     "get_resume_profile": {"token": "x"},
     "parse_resume_upload": {"token": "x", "resume_content": ""},
     "save_resume_profile": {"token": "x", "profile": {}},
+    "get_job_preferences": {"token": "x"},
+    "save_job_preferences": {"token": "x", "preferences": {}},
 }
 failures: list[str] = []
 

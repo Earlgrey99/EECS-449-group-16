@@ -28,7 +28,7 @@ import from ..services.profile_llm {
     save_application_answers
 }
 import from ..services.locations { search_cities }
-
+import from ..services.job_preferences { get_job_preferences, save_job_preferences }
 import from .ResumeProfileEditor { ResumeProfileEditor }
 
 glob POPULAR_SECTORS: list[str] = [
@@ -73,7 +73,17 @@ glob YES_NO_FIELDS: list[dict[str, str]] = [
     {"key": "work_authorized", "label": "Authorized to work where you're applying?"},
     {"key": "needs_sponsorship", "label": "Will you need visa sponsorship?"}
 ];
+glob ROLE_LEVEL_OPTIONS: list[str] = ["Internship", "New grad", "Experienced"];
 
+glob WORK_MODE_OPTIONS: list[str] = ["Remote", "Hybrid", "In office"];
+
+glob COMPANY_SIZE_OPTIONS: list[dict[str, str]] = [
+    {"value": "Startup", "hint": "1 to 50 people"},
+    {"value": "Small", "hint": "51 to 200"},
+    {"value": "Mid-size", "hint": "201 to 1,000"},
+    {"value": "Large", "hint": "1,001 to 10,000"},
+    {"value": "Enterprise", "hint": "10,000+"}
+];
 def:pub UserProfilePage -> JsxElement {
     nav = useNavigate();
 
@@ -93,6 +103,11 @@ def:pub UserProfilePage -> JsxElement {
     has job_titles: str = "";
     has salary_min: str = "100000";
     has contract_types: list[str] = ["Full-time"];
+    has role_levels: list[str] = [];
+    has work_modes: list[str] = [];
+    has company_sizes: list[str] = [];
+    has extra_skills: list[str] = [];
+    has new_extra_skill: str = "";
     has resume_title: str = "";
     has resume_content: str = "";
     has existing_resume_title: str = "";
@@ -275,6 +290,18 @@ def:pub UserProfilePage -> JsxElement {
                 }
             }
         } except Exception {}
+         try {
+            pref_tok = str(localStorage.getItem("jac_token") or "");
+            pref_res: any = await get_job_preferences(token=pref_tok);
+            if pref_res and pref_res.get("ok") {
+                prefs: any = pref_res.get("preferences") or {};
+                role_levels = prefs.get("role_levels") or [];
+                work_modes = prefs.get("work_modes") or [];
+                company_sizes = prefs.get("company_sizes") or [];
+                extra_skills = prefs.get("extra_skills") or [];
+            }
+        } except Exception {}
+
         loading_initial = False;
     }
 
@@ -364,6 +391,40 @@ def:pub UserProfilePage -> JsxElement {
             contract_types = contract_types + [ct];
         }
     }
+# Adds value to the list if it's missing, removes it if it's there.
+    # Returns a NEW list, so the page notices the change and redraws.
+    def toggle_in(items: list[str], value: str) -> list[str] {
+        if value in items {
+            return [x for x in items if x != value];
+        }
+        return items + [value];
+    }
+
+    def add_extra_skill() {
+        text = new_extra_skill.strip();
+        if text and text.lower() not in [s.lower() for s in extra_skills] and len(extra_skills) < 30 {
+            extra_skills = extra_skills + [text];
+        }
+        new_extra_skill = "";
+    }
+
+    # Pressing Enter in the skill box adds the skill instead of submitting the form.
+    def extra_skill_key(e: any) {
+        if e.key == "Enter" {
+            e.preventDefault();
+            add_extra_skill();
+        }
+    }
+
+    def remove_extra_skill(skill: str) {
+        extra_skills = [s for s in extra_skills if s != skill];
+    }
+
+    # The first location in the list is the top choice. This moves one to the front.
+    def make_top_location(loc_label: str) {
+        locations = [loc_label] + [l for l in locations if l != loc_label];
+    }
+
 
     def append_title(title: str) {
         if not job_titles.strip() {
@@ -514,14 +575,29 @@ def:pub UserProfilePage -> JsxElement {
                     github=github.strip(),
                     portfolio=portfolio.strip()
                 );
-                saved: any = await save_application_answers(token=tok, answers=answers);
+  saved: any = await save_application_answers(token=tok, answers=answers);
+                prefs_saved: any = await save_job_preferences(token=tok, preferences={
+                    "role_levels": role_levels,
+                    "work_modes": work_modes,
+                    "company_sizes": company_sizes,
+                    "extra_skills": extra_skills
+                });
                 submitting = False;
-                if contact and contact.get("ok") and saved and saved.get("ok") {
-                    nav("/jobs");
-                } else {
+                if not (contact and contact.get("ok")) {
                     step = 1;
-                    message = str(contact.get("error") if (contact and not contact.get("ok")) else "Could not save your details.");
+                    message = str(contact.get("error") if contact else "Could not save your details.");
+                } elif not (saved and saved.get("ok")) {
+                    step = 2;
+                    message = "Could not save your application answers.";
+                } elif not (prefs_saved and prefs_saved.get("ok")) {
+                    step = 2;
+                    message = str(prefs_saved.get("error") if prefs_saved else "Could not save your job preferences.");
+                } else {
+                    nav("/jobs");
                 }
+
+
+
             } else {
                 err_msg = str(res.get("error") if res else "Failed to save profile.");
                 message = err_msg;
@@ -632,15 +708,29 @@ def:pub UserProfilePage -> JsxElement {
                                         + Remote
                                     </button>
                                 </div>
+
+                                {len(locations) > 1 and <p className="text-[11px] text-muted-foreground">
+                                    Your first location is your top choice. Click ☆ on another one to make it first.
+                                </p>}
                                 <div className="flex flex-wrap gap-1.5 min-h-10 p-2 border rounded-md bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
                                     {for loc_item in locations {
-                                        <Badge
+                                                                                <Badge
                                             key={loc_item}
                                             variant="secondary"
                                             className="gap-1.5 py-1 px-2.5 text-xs font-medium bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
                                         >
                                             <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-3" />
                                             <span>{loc_item}</span>
+                                            {(len(locations) > 1 and loc_item == locations[0]) and <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">★ Top choice</span>}
+                                            {loc_item != locations[0] and <button
+                                                type="button"
+                                                title="Make this my top choice"
+                                                aria-label={"Make " + loc_item + " my top choice"}
+                                                onClick={lambda { make_top_location(loc_item); }}
+                                                className="rounded-full hover:bg-primary/20 px-1 text-primary"
+                                            >
+                                                ☆
+                                            </button>}
                                             {len(locations) > 1 and <button
                                                 type="button"
                                                 onClick={lambda { remove_location(loc_item); }}
@@ -653,7 +743,7 @@ def:pub UserProfilePage -> JsxElement {
                                     <div className="flex-1 min-w-[140px] relative">
                                         <input
                                             type="text"
-                                            placeholder="Type city (e.g. Seattle, Austin)..."
+                                            placeholder="Type a city or state (e.g. Seattle, Michigan)..."
                                             value={loc_search}
                                             onChange={handle_loc_search}
                                             onFocus={open_city_dropdown}
@@ -663,7 +753,7 @@ def:pub UserProfilePage -> JsxElement {
                                 </div>
                                 {city_dropdown_open and <div className="absolute left-0 right-0 top-full mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-lg z-50">
                                     <div className="p-1.5 text-[11px] font-semibold text-muted-foreground flex justify-between items-center border-b border-border/50">
-                                        <span>SUGGESTED CITIES</span>
+                                        <span>SUGGESTED PLACES</span>
                                         <button
                                             type="button"
                                             onClick={lambda { city_dropdown_open = False; }}
@@ -795,6 +885,87 @@ def:pub UserProfilePage -> JsxElement {
                                             </button>
                                         }}
                                     </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>}
+ {step == 2 and <Card className="border border-border/80 shadow-sm pt-1 pb-4">
+                        <CardContent className="flex flex-col gap-5 pt-1.5 pb-2 px-6">
+                            <div className="flex flex-col border-b pb-3">
+                                <h2 className="text-base font-semibold text-foreground">More job preferences</h2>
+                                <p className="text-xs text-muted-foreground">Optional. Pick as many as fit. We'll use these to tailor your job search.</p>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-foreground">Role level</label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {for lvl in ROLE_LEVEL_OPTIONS {
+                                        <button
+                                            key={lvl}
+                                            type="button"
+                                            onClick={lambda { role_levels = toggle_in(role_levels, lvl); }}
+                                            className={"rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer border " + ("border-primary bg-primary text-primary-foreground shadow-xs" if lvl in role_levels else "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground")}
+                                        >
+                                            {lvl}
+                                        </button>
+                                    }}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-foreground">Where you want to work</label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {for work_mode in WORK_MODE_OPTIONS {
+                                        <button
+                                            key={work_mode}
+                                            type="button"
+                                            onClick={lambda { work_modes = toggle_in(work_modes, work_mode); }}
+                                            className={"rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer border " + ("border-primary bg-primary text-primary-foreground shadow-xs" if work_mode in work_modes else "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground")}
+                                        >
+                                            {work_mode}
+                                        </button>
+                                    }}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-foreground">Company size</label>
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                    {for size_opt in COMPANY_SIZE_OPTIONS {
+                                        <button
+                                            key={size_opt["value"]}
+                                            type="button"
+                                            onClick={lambda { company_sizes = toggle_in(company_sizes, size_opt["value"]); }}
+                                            className={"flex flex-col items-start rounded-lg border px-3 py-2 text-left text-xs transition-colors cursor-pointer " + ("border-primary bg-primary/10 text-primary font-semibold shadow-xs" if size_opt["value"] in company_sizes else "border-border bg-background text-foreground hover:bg-muted")}
+                                        >
+                                            <span className="font-medium">{size_opt["value"]}</span>
+                                            <span className="text-[11px] text-muted-foreground">{size_opt["hint"]}</span>
+                                        </button>
+                                    }}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <label htmlFor="extra-skill" className="text-xs font-medium text-foreground">Extra skills</label>
+                                <p className="text-xs text-muted-foreground">Skills you want jobs to use that aren't on your resume yet.</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {for skill_item in extra_skills {
+                                        <span key={skill_item} className="flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                                            {skill_item}
+                                            <button type="button" aria-label={"Remove " + skill_item} className="hover:text-destructive" onClick={lambda { remove_extra_skill(skill_item); }}>✕</button>
+                                        </span>
+                                    }}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="extra-skill"
+                                        value={new_extra_skill}
+                                        placeholder="e.g. Rust, Figma, public speaking"
+                                        onChange={lambda (e: ChangeEvent) { new_extra_skill = e.target.value; }}
+                                        onKeyDown={extra_skill_key}
+                                        className="h-10 bg-background"
+                                    />
+                                    <Button type="button" variant="outline" onClick={add_extra_skill}>Add</Button>
                                 </div>
                             </div>
                         </CardContent>

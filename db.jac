@@ -134,7 +134,7 @@ def init_db(conn: any = None) {
             db_conn.execute(f"ALTER TABLE users ADD COLUMN {contact_column} TEXT;");
         } 
     }
-     for section_column in ["experience_json", "education_json", "skills_json", "other_links_json"] {
+     for section_column in ["experience_json", "education_json", "skills_json", "other_links_json", "job_preferences"] {
         if not any(column[1] == section_column for column in user_columns) {
             db_conn.execute(f"ALTER TABLE users ADD COLUMN {section_column} TEXT;");
         }
@@ -599,6 +599,18 @@ def save_application_answers(user_id: int, answers_json: str, conn: any = None) 
     db_conn.commit();
     return get_user_by_id(user_id, conn=db_conn);
 }
+
+"""Save the job preferences (role level, work style, company size, extra skills)."""
+def save_job_preferences_row(user_id: int, preferences_json: str, conn: any = None) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET job_preferences = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (preferences_json, user_id)
+    );
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
 
 """Save the details used to fill job applications. A blank value clears that detail."""
 def save_contact_details(

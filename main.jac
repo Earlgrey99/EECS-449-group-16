@@ -23,6 +23,7 @@ import from services.resume_profile {
     parse_resume_upload,
     save_resume_profile
 }
+import from services.job_preferences { get_job_preferences, save_job_preferences }
 import from services.tracker {
     list_tracker_applications,
     add_tracker_application,
