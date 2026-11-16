@@ -15,6 +15,7 @@ git pull --ff-only origin main
 jac --version                    # expected 0.37.11
 jac install
 export TURSO_DATABASE_URL="$HOME/launchpad-demo.db"
+jac clean --cache --force        # a stale cache breaks the page after a restart
 jac run --dev --profile test main.jac
 ```
 
@@ -23,8 +24,8 @@ new shell. Keep the database outside the repo, and don't commit resumes, credent
 database files. Run `jac install` after every pull, because new packages are added from time
 to time.
 
-If a page keeps reloading on its own, stop the server, run `jac clean --cache`, and start it
-again.
+Clear the cache every time you start the server. Without it, a restart can show a build
+error ("format_salary are not exported") or a page that keeps reloading.
 
 Load the extension:
 
@@ -103,7 +104,7 @@ Insights, and export a CSV.
 
 - **Login fails:** check that the server was started with `--profile test` and the
   `TURSO_DATABASE_URL` above.
-- **A page keeps reloading:** run `jac clean --cache` and restart the server.
+- **A build error or a page that keeps reloading:** stop the server, run `jac clean --cache --force`, and start it again.
 - **External jobs are slow or empty:** stay with the local listings.
 - **The extension panel doesn't appear:** reload the extension, then the job page, and check
   that it says it's connected. The toolbar popup's **Fill this page** works on any site.
