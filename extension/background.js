@@ -57,27 +57,53 @@ async function getAccount() {
     await chrome.storage.session.remove("token");
     return { connected: false, message: result.error || "Couldn't load your profile." };
   }
-  return { connected: true, user: result.user || {}, resume: result.latest_resume || null, answers: result.answers || {} };
+  return {
+    connected: true,
+    user: result.user || {},
+    resume: result.latest_resume || null,
+    answers: result.answers || {},
+    resumeDetails: result.resume_details || {},
+  };
 }
 
 // Demographic answers stay in this browser and are merged in only here.
+// Details read from the resume fill only what the saved profile leaves blank,
+// and from_resume lists them so the report can ask the user to check them.
 async function buildProfile(includeResume) {
   const account = await getAccount();
   if (!account.connected) return account;
   const { user, resume } = account;
   const { demographics = {} } = await chrome.storage.local.get("demographics");
+  const fromResume = [];
+  const contact = account.resumeDetails.contact || {};
+  const value = (key, saved) => {
+    if (saved) return saved;
+    if (!contact[key]) return "";
+    fromResume.push(key);
+    return contact[key];
+  };
+  const first = value("first_name", user.first_name);
+  const last = value("last_name", user.last_name);
+  const answers = { ...account.answers };
+  for (const [key, answer] of Object.entries(account.resumeDetails.answers || {})) {
+    if (!answers[key] && answer) {
+      answers[key] = answer;
+      fromResume.push(key);
+    }
+  }
   const profile = {
-    first_name: user.first_name || "",
-    last_name: user.last_name || "",
-    name: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.name || "",
+    first_name: first,
+    last_name: last,
+    name: [first, last].filter(Boolean).join(" ") || user.name || "",
     email: user.email || "",
-    phone: user.phone || "",
+    phone: value("phone", user.phone),
     // user.location holds target job locations, so city is where the user lives.
-    location: user.city || "",
-    linkedin: user.linkedin || "",
-    github: user.github || "",
-    portfolio: user.portfolio || "",
-    answers: { ...account.answers, ...demographics },
+    location: value("location", user.city),
+    linkedin: value("linkedin", user.linkedin),
+    github: value("github", user.github),
+    portfolio: value("portfolio", user.portfolio),
+    answers: { ...answers, ...demographics },
+    from_resume: fromResume,
   };
   if (resume && includeResume !== false) {
     profile.resume = { title: resume.title, content: resume.content };
