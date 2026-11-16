@@ -84,11 +84,16 @@ Data Engineering Intern, Acme Robotics (Jun 2025 - Present)
 """
 
 
-def create_resume_only_account() -> str:
-    """An account whose profile has a name but no contact details or answers, only a PDF resume."""
+def resume_pdf_module():
     sys.path.insert(0, str(ROOT))
     import resume_pdf
 
+    return resume_pdf
+
+
+def create_resume_only_account() -> str:
+    """An account whose profile has a name but no contact details or answers, only a PDF resume."""
+    resume_pdf = resume_pdf_module()
     pdf = resume_pdf.render_pdf(resume_pdf.parse_resume(RESUME_TEXT))
     email = f"ext-{secrets.token_hex(6)}@example.test"
     token = api("/user/register", {
@@ -402,8 +407,17 @@ def main() -> int:
                 session = popup.evaluate("chrome.storage.session.get(null)")
                 check("disconnect clears the token", "token" not in session, list(session))
 
-                # A profile with only a PDF resume: blanks are filled from the resume.
+                # A profile with only a PDF resume: blanks are filled from the resume,
+                # and a tailored resume the user chose is the one attached.
                 resume_token = create_resume_only_account()
+                tailored_pdf = resume_pdf_module().render_pdf(resume_pdf_module().parse_resume(RESUME_TEXT))
+                chosen = api("/function/use_tailored_resume", {
+                    "token": resume_token,
+                    "pdf": "data:application/pdf;base64," + base64.b64encode(tailored_pdf).decode(),
+                    "filename": "Resume - Data Engineer.pdf",
+                    "job_title": "Data Engineer",
+                }, resume_token)
+                assert chosen["data"]["result"]["ok"], chosen
                 launchpad.evaluate("token => localStorage.setItem('jac_token', token)", resume_token)
                 resume_page = context.new_page()
                 resume_page.goto(f"{site}/resume_form.html")
@@ -441,6 +455,13 @@ def main() -> int:
                     "the report says which answers came from the resume",
                     "Read from your resume. Please check (10)" in resume_report and "Field of study" in resume_report,
                     resume_report,
+                )
+                attached = resume_page.evaluate("() => document.getElementById('resume').files[0]?.name || null")
+                check("attaches the tailored resume the user chose", attached == "Resume - Data Engineer.pdf", attached)
+                check(
+                    "the popup names the tailored resume",
+                    "tailored for Data Engineer" in popup.locator("#resume-title").inner_text(),
+                    popup.locator("#resume-title").inner_text(),
                 )
                 profile_data = api("/function/get_user_profile_data", {"token": resume_token}, resume_token)["data"]["result"]
                 check("nothing from the resume is saved to the profile", not profile_data["user"].get("phone") and not profile_data["answers"], profile_data["answers"])

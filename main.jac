@@ -7,7 +7,7 @@ code belong in other modules. See tests/identity_http_check.py.
 
 import sys;
 import cli;
-import from services.applicant_demo { review_resume_text, get_applicant_details, tailor_resume_pdf }
+import from services.applicant_demo { review_resume_text, get_applicant_details, tailor_resume_pdf, use_tailored_resume, use_default_resume }
 import from services.auth_sync { sync_user_session, get_test_user_session }
 import from services.compatibility { get_resume_match_scores }
 import from services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
