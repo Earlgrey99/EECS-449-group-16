@@ -56,8 +56,8 @@ def:pub LandingPage() -> JsxElement {
             </section>
             <section className="mx-auto w-full max-w-6xl pl-6 pr-6">
                 <div className="rounded-2xl border bg-card p-8 shadow-sm md:p-10">
-                    <h2 className="text-balance text-2xl font-semibold tracking-tight">How Jaccit works</h2>
-                    <p className="mt-2 max-w-2xl text-muted-foreground">Jaccit pulls jobs near you, and the feed scrolls right to left so the first results are the closest match. Save roles, apply with the resume on file, and track every application in one place.</p>
+                    <h2 className="text-balance text-2xl font-semibold tracking-tight">How Launchpad works</h2>
+                    <p className="mt-2 max-w-2xl text-muted-foreground">Launchpad pulls jobs near you, and the feed scrolls right to left so the first results are the closest match. Save roles, apply with the resume on file, and track every application in one place.</p>
                     <div className="mt-8 grid gap-4 md:grid-cols-3">
                         {for step in [
                             {"n": "1", "title": "Create an account", "body": "Sign up with your email in under a minute."},

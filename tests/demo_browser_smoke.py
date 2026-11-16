@@ -1,4 +1,4 @@
-"""Headless browser smoke walkthrough for the Jaccit classroom demonstration.
+"""Headless browser smoke walkthrough for the Launchpad classroom demonstration.
 
 Requires a running Jac server in the TEST profile and Playwright Chromium.
 Use sample data only; this does not submit any external application.

@@ -1604,7 +1604,7 @@ with entry:__main__ {
     sys.`exit(main());
 }
 
-# --- Web UI (Jaccit job application platform) ---
+# --- Web UI (Launchpad job application platform) ---
 
 import ".styles.global.css";
 import ".components.LandingPage.css";

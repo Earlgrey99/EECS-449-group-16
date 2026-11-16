@@ -1,4 +1,4 @@
-"""Stateless, size-bounded adapter for the local Jaccit resume prototype.
+"""Stateless, size-bounded adapter for the local Launchpad resume prototype.
 
 The web UI sends text to this function but does not store it. No third-party AI
 API is contacted. Keep personal data out of shared screenshots and server logs.

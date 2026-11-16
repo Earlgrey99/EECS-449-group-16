@@ -140,7 +140,7 @@ def generate_job_search_params(profile_data: dict[str, any]) -> dict[str, any] {
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
-        "User-Agent": "Jaccit/1.0"
+        "User-Agent": "Launchpad/1.0"
     };
 
     req = urllib.request.Request(url, data=req_data, headers=headers);
