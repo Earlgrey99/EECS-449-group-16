@@ -219,6 +219,7 @@ def _public_user(user: dict[str, any] | None) -> dict[str, any] | None {
     }
     clean = dict(user);
     clean.pop("password_hash", None);
+    clean.pop("application_answers", None);
     return clean;
 }
 

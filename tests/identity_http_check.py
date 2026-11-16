@@ -44,6 +44,7 @@ PROTECTED = {
     "save_contact_details": {"token": "x", "phone": "", "city": "", "linkedin": "", "github": "", "portfolio": ""},
     "get_applicant_details": {"token": "x"},
     "tailor_resume_pdf": {"token": "x", "job_text": "x", "role": "x", "resume_content": ""},
+    "save_application_answers": {"token": "x", "answers": {}},
     "list_tracker_applications": {"token": "x"},
     "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
     "set_tracker_status": {"token": "x", "app_id": 1, "status": "Offer"},
@@ -173,6 +174,12 @@ def main() -> int:
     check("tailoring rejects a resume with no sections", alice_pdf.get("ok") is False and "sections" in str(alice_pdf.get("error")), raw[:200])
     _, payload, raw = http("/function/tailor_resume_pdf", {"token": bob, "job_text": "Python SQL", "role": "Engineer", "resume_content": ""}, bob)
     check("another user's tailoring doesn't use this resume", RESUME not in raw and result(payload).get("ok") is False, raw[:200])
+
+    # Saved answers stay with their owner, and demographic answers never reach the server.
+    _, payload, raw = http("/function/save_application_answers", {"token": alice, "answers": {"school": "Michigan", "gender": "woman"}}, alice)
+    check("server keeps allowed answers and drops demographic ones", result(payload).get("answers") == {"school": "Michigan"}, raw[:200])
+    _, _, raw = http("/function/get_user_profile_data", {"token": bob}, bob)
+    check("another user cannot read saved answers", "Michigan" not in raw, raw[:200])
 
     # Tracker rows stay with their owner.
     _, payload, raw = http("/function/add_tracker_application", {
