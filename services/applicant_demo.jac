@@ -7,7 +7,7 @@ import base64;
 import re;
 import applicant_web;
 import resume_pdf;
-import from db { list_resumes_by_user }
+import from db { list_resumes_by_user, save_tailored_resume }
 import from .auth_sync { _resolve_caller }
 import from .compatibility { resume_text_from_content }
 import from .profile_llm { _read_answers, _details_from }
@@ -93,7 +93,7 @@ def _autofill_profile(user: dict[str, any], conn: any = None) -> dict[str, any] 
     return {
         "contact": _autofill_rows(CONTACT_FIELDS, saved_contact, resume_contact),
         "answers": _autofill_rows(ANSWER_FIELDS, _read_answers(user), details.get("answers") or {}),
-        "resume_title": str(latest.get("title") or "Saved resume") if latest else ""
+        "resume_title": _application_resume(user, latest)["title"]
     };
 }
 
@@ -108,6 +108,8 @@ def:protect get_applicant_details(token: str) -> dict[str, any] {
     }
     result = _applicant_details(user);
     result["autofill"] = _autofill_profile(user);
+    resumes = list_resumes_by_user(int(user["id"]));
+    result["application_resume"] = _application_resume(user, resumes[0] if resumes else None);
     return result;
 }
 
@@ -137,8 +139,73 @@ def _tailor_for(user: dict[str, any], job_text: str, role: str, resume_content: 
         "ok": True,
         "pdf": "data:application/pdf;base64," + base64.b64encode(result["pdf"]).decode("ascii"),
         "filename": f"Resume - {safe_role}.pdf",
-        "changes": result["changes"]
+        "changes": result["changes"],
+        "keywords": result["keywords"]
     };
+}
+
+"""The resume that applications attach: the chosen tailored one, else the newest saved one."""
+def _application_resume(user: dict[str, any], latest: dict[str, any] | None) -> dict[str, any] {
+    if user.get("tailored_resume") {
+        return {
+            "title": str(user.get("tailored_resume_title") or "Tailored resume.pdf"),
+            "tailored": True,
+            "tailored_for": str(user.get("tailored_for") or "")
+        };
+    }
+    return {"title": str(latest.get("title") or "Saved resume") if latest else "", "tailored": False, "tailored_for": ""};
+}
+
+glob MAX_TAILORED_BYTES: int = 5 * 1024 * 1024;
+
+"""Use a tailored PDF for applications instead of the default resume."""
+def _use_tailored(user: dict[str, any], pdf: str, filename: str, job_title: str, conn: any = None) -> dict[str, any] {
+    prefix = "data:application/pdf;base64,";
+    raw = str(pdf or "");
+    if not raw.startswith(prefix) {
+        return {"ok": False, "error": "Create a tailored PDF first."};
+    }
+    try {
+        data = base64.b64decode(raw[len(prefix):], validate=True);
+    } except Exception {
+        return {"ok": False, "error": "That PDF couldn't be read."};
+    }
+    if not data.startswith(b"%PDF") or len(data) > MAX_TAILORED_BYTES {
+        return {"ok": False, "error": "That PDF couldn't be read."};
+    }
+    name = re.sub(r"[^A-Za-z0-9 ._()-]+", "", str(filename or "")).strip()[:100] or "Tailored resume.pdf";
+    if not name.lower().endswith(".pdf") {
+        name = name + ".pdf";
+    }
+    job = re.sub(r"\s+", " ", str(job_title or "")).strip()[:120];
+    updated = save_tailored_resume(int(user["id"]), raw, name, job, conn=conn);
+    return {"ok": True, "application_resume": _application_resume(updated or user, None)};
+}
+
+def:protect use_tailored_resume(token: str, pdf: str, filename: str, job_title: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    user = caller["app_user"];
+    if user is None {
+        return {"ok": False, "error": "Save your profile first."};
+    }
+    return _use_tailored(user, pdf, filename, job_title);
+}
+
+def:protect use_default_resume(token: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    user = caller["app_user"];
+    if user is None {
+        return {"ok": False, "error": "Save your profile first."};
+    }
+    save_tailored_resume(int(user["id"]), None, None, None);
+    resumes = list_resumes_by_user(int(user["id"]));
+    return {"ok": True, "application_resume": _application_resume({}, resumes[0] if resumes else None)};
 }
 
 def:protect tailor_resume_pdf(token: str, job_text: str, role: str, resume_content: str) -> dict[str, any] {

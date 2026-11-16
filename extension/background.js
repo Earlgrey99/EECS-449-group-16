@@ -60,7 +60,8 @@ async function getAccount() {
   return {
     connected: true,
     user: result.user || {},
-    resume: result.latest_resume || null,
+    // A tailored resume the user chose in Launchpad replaces the default one.
+    resume: result.application_resume || result.latest_resume || null,
     answers: result.answers || {},
     resumeDetails: result.resume_details || {},
   };
@@ -108,7 +109,8 @@ async function buildProfile(includeResume) {
   if (resume && includeResume !== false) {
     profile.resume = { title: resume.title, content: resume.content };
   }
-  return { connected: true, profile, resumeTitle: resume ? resume.title : "" };
+  const tailoredFor = resume && resume.tailored ? ` (tailored${resume.tailored_for ? ` for ${resume.tailored_for}` : ""})` : "";
+  return { connected: true, profile, resumeTitle: resume ? resume.title + tailoredFor : "" };
 }
 
 async function addToTracker({ role, company, url }) {

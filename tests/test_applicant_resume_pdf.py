@@ -7,6 +7,7 @@ import unittest
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
+import resume_pdf
 from resume_pdf import parse_resume, pdf_text, resume_bytes, tailor, tailor_resume
 
 RESUME_LINES = [
@@ -140,6 +141,35 @@ class PdfToPdfTests(unittest.TestCase):
     def test_decodes_saved_resume_formats(self):
         self.assertEqual(resume_bytes("plain words")[1], "text")
         self.assertEqual(resume_bytes(data_url(make_pdf(RESUME_LINES)))[1], "pdf")
+
+
+class KeywordsAndFitTest(unittest.TestCase):
+    def test_keywords_split_by_what_the_resume_has(self):
+        words = resume_pdf.keyword_match(
+            "Built Python pipelines and SQL reports.",
+            "Python Python SQL Kubernetes. Python and Kubernetes experience.",
+        )
+        self.assertEqual(words["matched"], ["python", "sql"])
+        self.assertEqual(words["missing"][0], "kubernetes")
+        self.assertNotIn("python", words["missing"])
+
+    def test_a_one_page_resume_stays_one_page(self):
+        lines = ["Jordan Lee", "jordan@example.com", "EXPERIENCE"]
+        for job in range(7):
+            lines.append(f"Engineer, Company {job} (2020 - 2021)")
+            lines.extend(f"- Built Python service {job}-{n} that handled reporting and data checks for the team." for n in range(6))
+        lines += ["SKILLS", "Python, SQL, Docker, AWS"]
+        resume = resume_pdf.parse_resume("\n".join(lines))
+        full = resume_pdf.render_pdf(resume)
+        self.assertEqual(resume_pdf.page_count(full), 2, "fixture should overflow at full size")
+        fitted = resume_pdf.render_to_fit(resume, 1)
+        self.assertEqual(resume_pdf.page_count(fitted), 1)
+        self.assertIn("handled reporting", resume_pdf.pdf_text(fitted))
+
+    def test_fitting_gives_up_rather_than_shrinking_forever(self):
+        lines = ["Jordan Lee", "EXPERIENCE"] + [f"- Bullet {n} about building Python services for reporting." for n in range(160)]
+        resume = resume_pdf.parse_resume("\n".join(lines))
+        self.assertGreater(resume_pdf.page_count(resume_pdf.render_to_fit(resume, 1)), 1)
 
 
 if __name__ == "__main__":

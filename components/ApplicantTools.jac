@@ -2,7 +2,7 @@ import from "@jac/runtime" { jacIsLoggedIn, Link, Navigate, useLocation }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
-import from ..services.applicant_demo { review_resume_text, get_applicant_details, tailor_resume_pdf }
+import from ..services.applicant_demo { get_applicant_details, tailor_resume_pdf, use_tailored_resume, use_default_resume }
 import from ..services.jobs { list_jobs }
 
 def:pub ApplicantTools() -> JsxElement {
@@ -19,13 +19,11 @@ def:pub ApplicantTools() -> JsxElement {
     has autofill_loaded: bool = False;
     has autofill_error: str = "";
 
-    # Resume review is computed server-side using the existing tailoring module.
-    has role: str = "Data Analyst";
-    has resume_text: str = "Data science student\n- Built Python data pipelines to process incoming files.\n- Created dashboards for analytics and reporting.";
-    has job_description: str = "Seeking a Data Analyst with Python, SQL, Excel, data pipelines, and dashboard experience.";
-    has review: str = "";
-    has reviewing: bool = False;
-    has review_error: str = "";
+    # The job to tailor for. The jobs page passes it along; otherwise the user pastes it.
+    has role: str = "";
+    has job_description: str = "";
+    has job_from_feed: bool = False;
+    has editing_job: bool = False;
     has did_init_tools: bool = False;
 
     has job_notice: str = "";
@@ -36,7 +34,19 @@ def:pub ApplicantTools() -> JsxElement {
     has tailor_error: str = "";
     has tailored_pdf: str = "";
     has tailored_name: str = "";
+    has tailored_role: str = "";
+    has preview_url: str = "";
     has tailor_changes: list[str] = [];
+    has matched_keywords: list[str] = [];
+    has missing_keywords: list[str] = [];
+
+    # Which resume the extension attaches to applications.
+    has app_resume_title: str = "";
+    has app_resume_tailored: bool = False;
+    has app_resume_for: str = "";
+    has choosing: bool = False;
+    has choice_message: str = "";
+    has choice_error: str = "";
 
     # Use the saved profile and resume, so the user doesn't retype them here.
     async def load_saved_details {
@@ -50,10 +60,8 @@ def:pub ApplicantTools() -> JsxElement {
                 contact_rows = contacts;
                 answer_rows = answers;
                 autofill_resume = str(autofill.get("resume_title") or "");
-                if saved.get("resume_text") {
-                    resume_text = str(saved.get("resume_text"));
-                    saved_resume_title = str(saved.get("resume_title") or "");
-                }
+                saved_resume_title = str(saved.get("resume_title") or "");
+                set_app_resume(saved.get("application_resume"));
             } else {
                 autofill_error = str(saved.get("error") if saved else "") or "Couldn't load your profile.";
             }
@@ -61,6 +69,16 @@ def:pub ApplicantTools() -> JsxElement {
             autofill_error = "Couldn't load your profile.";
         }
         autofill_loaded = True;
+    }
+
+    def set_app_resume(info: any) {
+        if not info {
+            return;
+        }
+        app_resume_title = str(info.get("title") or "");
+        app_resume_tailored = bool(info.get("tailored"));
+        app_resume_for = str(info.get("tailored_for") or "");
+        autofill_resume = app_resume_title + ((" (tailored for " + app_resume_for + ")") if app_resume_tailored and app_resume_for else "");
     }
 
     # Job descriptions can hold HTML. DOMParser reads it without running any of it.
@@ -72,6 +90,7 @@ def:pub ApplicantTools() -> JsxElement {
 
     def use_job(title: str, desc: str, tags: str) {
         role = title;
+        job_from_feed = True;
         job_description = (plain_text(desc) + ("\n\nSkills: " + tags if tags else ""))[:12000];
     }
 
@@ -98,6 +117,9 @@ def:pub ApplicantTools() -> JsxElement {
             }
             job_notice = "We couldn't load that job. Paste its description below.";
         }
+        if not job_from_feed {
+            editing_job = True;
+        }
     }
 
     def handle_upload(e: ChangeEvent) {
@@ -107,18 +129,42 @@ def:pub ApplicantTools() -> JsxElement {
             return;
         }
         file_obj: any = files[0];
+        if not str(file_obj.name).lower().endswith(".pdf") {
+            tailor_error = "Choose a PDF resume.";
+            return;
+        }
+        tailor_error = "";
         upload_name = str(file_obj.name);
         reader: any = Reflect.construct(FileReader, []);
         reader.onload = lambda (load_ev: any) { upload_content = str(load_ev.target.result); };
         reader.readAsDataURL(file_obj);
     }
 
+    # A blob URL lets the browser's PDF viewer show the result on the page.
+    async def show_preview(data_url: str) {
+        # jac check has no stub for the URL global; it exists in every browser.
+        if preview_url {
+            URL.revokeObjectURL(preview_url);  # jac:ignore[E1032]
+        }
+        preview_url = "";
+        try {
+            response: any = await fetch(data_url);
+            blob: any = await response.blob();
+            preview_url = str(URL.createObjectURL(blob));  # jac:ignore[E1032]
+        } except Exception {}
+    }
+
     async def make_tailored_pdf {
         tailor_error = "";
+        choice_message = "";
+        choice_error = "";
         tailored_pdf = "";
         tailor_changes = [];
+        matched_keywords = [];
+        missing_keywords = [];
         if not job_description.strip() {
-            tailor_error = "Paste the job description above first.";
+            tailor_error = "Add the job description first.";
+            editing_job = True;
             return;
         }
         tailoring = True;
@@ -128,8 +174,15 @@ def:pub ApplicantTools() -> JsxElement {
             if res and res.get("ok") {
                 tailored_pdf = str(res.get("pdf"));
                 tailored_name = str(res.get("filename"));
+                tailored_role = role.strip();
                 changed: list[str] = res.get("changes") or [];
                 tailor_changes = changed;
+                words: any = res.get("keywords") or {};
+                matched: list[str] = words.get("matched") or [];
+                missing: list[str] = words.get("missing") or [];
+                matched_keywords = matched;
+                missing_keywords = missing;
+                await show_preview(tailored_pdf);
             } else {
                 tailor_error = str(res.get("error") if res else "Couldn't create the PDF.");
             }
@@ -139,20 +192,42 @@ def:pub ApplicantTools() -> JsxElement {
         tailoring = False;
     }
 
-    async def generate_review(e: FormEvent) {
-        e.preventDefault();
-        review_error = "";
-        if not resume_text.strip() or not job_description.strip() {
-            review_error = "Paste both resume text and a job description.";
-            return;
-        }
-        reviewing = True;
+    async def use_tailored {
+        choice_message = "";
+        choice_error = "";
+        choosing = True;
         try {
-            review = await review_resume_text(resume_text, job_description, role);
+            tok = str(localStorage.getItem("jac_token") or "");
+            res: any = await use_tailored_resume(token=tok, pdf=tailored_pdf, filename=tailored_name, job_title=tailored_role);
+            if res and res.get("ok") {
+                set_app_resume(res.get("application_resume"));
+                choice_message = "Applications will attach this tailored resume.";
+            } else {
+                choice_error = str(res.get("error") if res else "Couldn't save your choice.");
+            }
         } except Exception {
-            review_error = "Could not reach the Jac resume review service.";
+            choice_error = "Couldn't save your choice.";
         }
-        reviewing = False;
+        choosing = False;
+    }
+
+    async def use_default {
+        choice_message = "";
+        choice_error = "";
+        choosing = True;
+        try {
+            tok = str(localStorage.getItem("jac_token") or "");
+            res: any = await use_default_resume(token=tok);
+            if res and res.get("ok") {
+                set_app_resume(res.get("application_resume"));
+                choice_message = "Applications will attach your default resume.";
+            } else {
+                choice_error = str(res.get("error") if res else "Couldn't save your choice.");
+            }
+        } except Exception {
+            choice_error = "Couldn't save your choice.";
+        }
+        choosing = False;
     }
 
     return <div className="flex min-h-svh flex-col bg-primary/5">
@@ -161,7 +236,7 @@ def:pub ApplicantTools() -> JsxElement {
             <header className="flex flex-col gap-3">
                 <p className="text-sm font-semibold text-primary">LAUNCHPAD EXPERIMENTAL WORKSPACE</p>
                 <h1 className="text-3xl font-semibold tracking-tight">Application tools</h1>
-                <p className="max-w-3xl text-muted-foreground">Check what the Launchpad extension will fill on a job application, then review and tailor your resume for the job. Nothing here submits an application or changes your original resume.</p>
+                <p className="max-w-3xl text-muted-foreground">Check what the Launchpad extension will fill on a job application, and tailor your resume for the job. Nothing here submits an application or changes your original resume.</p>
             </header>
 
             <section aria-labelledby="autofill-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
@@ -218,61 +293,91 @@ def:pub ApplicantTools() -> JsxElement {
                 </div>}
             </section>
 
-            <section className="rounded-2xl border bg-card p-6 shadow-sm">
+            <section aria-labelledby="tailor-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
                 <div className="mb-6 flex flex-col gap-1">
-                    <h2 className="text-2xl font-semibold">2. Resume tailoring</h2>
-                    <p className="text-sm text-muted-foreground">Paste resume text and a job description. The Jac backend runs the existing evidence-based tailoring algorithm and returns a review.</p>
+                    <h2 id="tailor-heading" className="text-2xl font-semibold">2. Tailor your resume</h2>
+                    <p className="max-w-3xl text-sm text-muted-foreground">Launchpad reorders your resume PDF for the job: the bullets and skills that match the job's keywords move up. Nothing is added, removed, or reworded. Review the new PDF, then choose which resume to send.</p>
                 </div>
+
+                <div className="mb-6 flex flex-col gap-3 rounded-xl border bg-primary/5 p-4 text-sm md:flex-row md:items-center md:justify-between">
+                    <p>
+                        <span className="text-muted-foreground">Applications attach: </span>
+                        <span className="font-medium">{app_resume_title or "No resume saved yet"}</span>
+                        {(app_resume_tailored and bool(app_resume_for)) and <span className="text-muted-foreground">{" (tailored for " + app_resume_for + ")"}</span>}
+                    </p>
+                    {app_resume_tailored and <Button variant="outline" disabled={choosing} onClick={use_default}>Switch back to my default resume</Button>}
+                </div>
+
                 {bool(job_notice) and <p role="status" className="mb-4 text-sm text-amber-700">{job_notice}</p>}
-                <form onSubmit={generate_review} className="flex flex-col gap-4">
-                    <label className="flex flex-col gap-1 text-sm font-medium">Target role
-                        <input className="rounded-lg border bg-background p-3 font-normal" value={role} onChange={lambda (e: ChangeEvent) { role = e.target.value; }} />
-                    </label>
-                    <div className="grid gap-5 md:grid-cols-2">
-                        <label className="flex flex-col gap-1 text-sm font-medium">Resume text
-                            <textarea className="min-h-52 rounded-lg border bg-background p-3 font-mono text-sm font-normal" value={resume_text} onChange={lambda (e: ChangeEvent) { resume_text = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Job description
-                            <textarea className="min-h-52 rounded-lg border bg-background p-3 font-mono text-sm font-normal" value={job_description} onChange={lambda (e: ChangeEvent) { job_description = e.target.value; }} />
+                <div className="grid gap-6 md:grid-cols-2">
+                    <div className="flex flex-col gap-3">
+                        <h3 className="font-semibold">Job</h3>
+                        {(not editing_job) and <div className="flex flex-col gap-2 text-sm">
+                            <p className="font-medium">{role or "Selected job"}</p>
+                            <button type="button" className="self-start text-primary underline-offset-4 hover:underline" onClick={lambda { editing_job = True; }}>Edit the job description</button>
+                        </div>}
+                        {editing_job and <div className="flex flex-col gap-3">
+                            <label className="flex flex-col gap-1 text-sm font-medium">Job title
+                                <input className="rounded-lg border bg-background p-3 font-normal" placeholder="Data Analyst" value={role} onChange={lambda (e: ChangeEvent) { role = e.target.value; }} />
+                            </label>
+                            <label className="flex flex-col gap-1 text-sm font-medium">Job description
+                                <textarea className="min-h-40 rounded-lg border bg-background p-3 text-sm font-normal" placeholder="Paste the job description from the posting." value={job_description} onChange={lambda (e: ChangeEvent) { job_description = e.target.value; }} />
+                            </label>
+                        </div>}
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        <h3 className="font-semibold">Resume</h3>
+                        <p className="text-sm">{upload_name if upload_name else (("Your default resume: " + saved_resume_title) if saved_resume_title else "No saved resume. Choose a PDF below.")}</p>
+                        <label className="flex flex-col gap-1 text-sm font-medium">Use a different PDF (optional)
+                            <input type="file" accept=".pdf,application/pdf" onChange={handle_upload} className="text-sm font-normal" />
                         </label>
                     </div>
-                    {bool(saved_resume_title) and <p className="text-sm text-muted-foreground">{"Using your saved resume: " + saved_resume_title}</p>}
-                    <div className="flex flex-wrap items-center gap-3">
-                        <Button type="submit" disabled={reviewing}>{"Generating review..." if reviewing else "Generate resume review"}</Button>
-                        <p className="text-xs text-muted-foreground">Text is sent to your local Jac backend, not a third-party AI service.</p>
-                    </div>
-                    {review_error and <p className="text-sm text-red-600">{review_error}</p>}
-                </form>
-                {review and <div className="mt-7 rounded-xl border bg-primary/5 p-5">
-                    <h3 className="mb-3 font-semibold">Job-specific review</h3>
-                    <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">{review}</pre>
-                </div>}
-            </section>
-            <section className="rounded-2xl border bg-card p-6 shadow-sm">
-                <div className="mb-6 flex flex-col gap-1">
-                    <h2 className="text-2xl font-semibold">3. Tailored resume PDF</h2>
-                    <p className="text-sm text-muted-foreground">Creates a copy of your resume for the job above. Within each job and project, the most relevant bullets move to the top, and matching skills come first. Nothing is added, removed, or reworded.</p>
                 </div>
-                <div className="flex flex-col gap-4">
-                    <p className="text-sm">{("Resume: " + upload_name) if upload_name else (("Resume: your saved " + saved_resume_title) if saved_resume_title else "No saved resume. Upload one below.")}</p>
-                    <label className="flex flex-col gap-1 text-sm font-medium">Use a different resume (optional)
-                        <input type="file" accept=".pdf,.txt" onChange={handle_upload} className="text-sm font-normal" />
-                    </label>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <Button type="button" disabled={tailoring} onClick={make_tailored_pdf}>{"Creating PDF..." if tailoring else "Create tailored PDF"}</Button>
-                        {bool(tailored_pdf) and <a href={tailored_pdf} download={tailored_name} className="inline-flex h-9 items-center rounded-lg border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/10">{"Download " + tailored_name}</a>}
+
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                    <Button type="button" disabled={tailoring} onClick={make_tailored_pdf}>{"Tailoring..." if tailoring else "Tailor my resume"}</Button>
+                    <p className="text-xs text-muted-foreground">Runs on the Launchpad server, not a third-party AI service.</p>
+                </div>
+                {bool(tailor_error) and <p role="alert" className="mt-3 text-sm text-red-600">{tailor_error}</p>}
+
+                {bool(tailored_pdf) and <div className="mt-6 flex flex-col gap-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-xl border p-4 text-sm">
+                            <h3 className="mb-2 font-semibold">Job keywords your resume has</h3>
+                            {(not matched_keywords) and <p className="text-muted-foreground">None of the job's main keywords appear in your resume.</p>}
+                            <ul className="flex flex-wrap gap-2">
+                                {for word in matched_keywords {
+                                    <li key={word} className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{word}</li>
+                                }}
+                            </ul>
+                        </div>
+                        <div className="rounded-xl border p-4 text-sm">
+                            <h3 className="mb-2 font-semibold">Job keywords your resume doesn't mention</h3>
+                            {(not missing_keywords) and <p className="text-muted-foreground">None. Your resume covers the job's main keywords.</p>}
+                            <ul className="flex flex-wrap gap-2">
+                                {for word in missing_keywords {
+                                    <li key={word} className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{word}</li>
+                                }}
+                            </ul>
+                            <p className="mt-2 text-xs text-muted-foreground">Launchpad doesn't add these. Add one to your resume yourself only if it's true for you.</p>
+                        </div>
                     </div>
-                    {bool(tailor_error) and <p role="alert" className="text-sm text-red-600">{tailor_error}</p>}
-                    {bool(tailored_pdf) and <div className="rounded-xl border bg-primary/5 p-4 text-sm">
+                    <div className="rounded-xl border bg-primary/5 p-4 text-sm">
                         <p className="font-medium">{("What changed" if tailor_changes else "Your resume was already in the best order for this job.")}</p>
                         <ul className="mt-2 list-disc pl-5">
                             {for change in tailor_changes {
                                 <li key={change}>{change}</li>
                             }}
                         </ul>
-                        <p className="mt-3 text-muted-foreground">Review the PDF before you send it.</p>
-                    </div>}
-                </div>
+                    </div>
+                    {bool(preview_url) and <iframe src={preview_url} title="Tailored resume preview" className="h-[75vh] min-h-96 w-full rounded-xl border bg-white" />}
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Button type="button" disabled={choosing} onClick={use_tailored}>{"Saving..." if choosing else "Use this resume for applications"}</Button>
+                        <a href={tailored_pdf} download={tailored_name} className="inline-flex h-9 items-center rounded-lg border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/10">{"Download " + tailored_name}</a>
+                    </div>
+                </div>}
+                {bool(choice_message) and <p role="status" className="mt-3 text-sm text-primary">{choice_message}</p>}
+                {bool(choice_error) and <p role="alert" className="mt-3 text-sm text-red-600">{choice_error}</p>}
             </section>
         </main>
         <SiteFooter />

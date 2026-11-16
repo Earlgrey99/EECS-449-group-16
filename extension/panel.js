@@ -119,10 +119,13 @@
     setBody(el("p", { className: "muted", textContent: message || "Sign in to Launchpad, then connect." }), button);
   }
 
-  function renderReport(report, fromResume = []) {
+  function renderReport(report, fromResume = [], resumeTitle = "") {
     const filled = report.fields.filter((field) => field.status === "filled").length;
     const kept = report.fields.filter((field) => field.status === "kept").length;
     const nodes = [el("p", { textContent: `Filled ${filled} field${filled === 1 ? "" : "s"}${kept ? `, kept ${kept} you'd already answered` : ""}. Please review them.` })];
+    if (resumeTitle && report.fields.some((field) => field.key === "resume" && field.status === "filled")) {
+      nodes.push(el("p", { className: "muted", textContent: `Attached ${resumeTitle}` }));
+    }
     const guessed = report.fields.filter((field) => field.status === "filled" && fromResume.includes(field.key));
     if (guessed.length) {
       nodes.push(el("p", { className: "warn", textContent: "Read from your resume. Please check" }));
@@ -151,7 +154,7 @@
       if (!result.connected) return showConnect(result.message);
       const report = await window.LaunchpadAutofill.run(result.profile, { apply: true }, document);
       lastJob = window.LaunchpadAutofill.parseJobTitle(document.title);
-      renderReport(report, result.profile.from_resume || []);
+      renderReport(report, result.profile.from_resume || [], result.resumeTitle || "");
     } catch (error) {
       showError(`Autofill failed: ${error.message || error}`);
     }

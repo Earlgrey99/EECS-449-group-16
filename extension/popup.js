@@ -69,7 +69,10 @@ function render() {
   $("account-name").textContent = name ? `${name} (${user.email})` : user.email || "";
   $("resume-row").hidden = !resume;
   $("no-resume").hidden = Boolean(resume);
-  if (resume) $("resume-title").textContent = resume.title || "Saved resume";
+  if (resume) {
+    const forJob = resume.tailored && resume.tailored_for ? `, tailored for ${resume.tailored_for}` : resume.tailored ? ", tailored" : "";
+    $("resume-title").textContent = (resume.title || "Saved resume") + forJob;
+  }
 }
 
 async function targetTabId() {
