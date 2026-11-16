@@ -39,7 +39,7 @@ Check these routes before the talk:
 - `http://localhost:8000/login`: sign-in (the test profile signs in automatically)
 - `http://localhost:8000/jobs`: job feed with match scores
 - `http://localhost:8000/me`: profile, contact details, and application answers
-- `http://localhost:8000/tools`: autofill demo, resume review, and tailored PDF
+- `http://localhost:8000/tools`: autofill profile, resume review, and tailored PDF
 - `http://localhost:8000/tracker`: application tracker
 
 Don't rely on Google sign-in or the external job APIs during the demo.
@@ -62,9 +62,10 @@ In the extension, click **Saved answers** and choose demographic answers, or
 Show the feed tailored to the saved profile, with a match score on each job. Open a job,
 point out its matched and missing skills, and click **Add to tracker**.
 
-**1:00–2:30: Resume review and tailored PDF.**
+**1:00–2:30: Autofill profile, resume review and tailored PDF.**
 Click **Apply now (demo)**. Applicant Tools opens with the job description and the saved
-resume already filled in. Click **Generate resume review** and show verified skills and
+resume already filled in. Under **Your autofill profile**, show exactly what the extension
+will fill, and which values were read from the resume. Then click **Generate resume review** and show verified skills and
 requirements the resume doesn't support. Under **Tailored resume PDF**, click **Create
 tailored PDF**, show the list of what changed, and download it. Point out that it only
 reorders: the most relevant bullets move up and matching skills come first, and nothing is

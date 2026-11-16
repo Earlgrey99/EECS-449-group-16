@@ -1,4 +1,4 @@
-import from "@jac/runtime" { jacIsLoggedIn, Navigate, useLocation }
+import from "@jac/runtime" { jacIsLoggedIn, Link, Navigate, useLocation }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
@@ -12,16 +12,12 @@ def:pub ApplicantTools() -> JsxElement {
         return <Navigate to="/login" replace={True} />;
     }
 
-    # Filled from the saved profile. Edits here stay on this page.
-    has full_name: str = "";
-    has email: str = "";
-    has phone: str = "";
-    has linkedin: str = "";
-    has filled_name: str = "";
-    has filled_email: str = "";
-    has filled_phone: str = "";
-    has filled_linkedin: str = "";
-    has autofill_message: str = "Check your details, then preview the autofill.";
+    # What the extension will fill, from the server, with where each value comes from.
+    has contact_rows: list[any] = [];
+    has answer_rows: list[any] = [];
+    has autofill_resume: str = "";
+    has autofill_loaded: bool = False;
+    has autofill_error: str = "";
 
     # Resume review is computed server-side using the existing tailoring module.
     has role: str = "Data Analyst";
@@ -48,16 +44,23 @@ def:pub ApplicantTools() -> JsxElement {
             tok = str(localStorage.getItem("jac_token") or "");
             saved: any = await get_applicant_details(token=tok);
             if saved and saved.get("ok") {
-                full_name = str(saved.get("name") or "");
-                email = str(saved.get("email") or "");
-                phone = str(saved.get("phone") or "");
-                linkedin = str(saved.get("linkedin") or "");
+                autofill: any = saved.get("autofill") or {};
+                contacts: list[any] = autofill.get("contact") or [];
+                answers: list[any] = autofill.get("answers") or [];
+                contact_rows = contacts;
+                answer_rows = answers;
+                autofill_resume = str(autofill.get("resume_title") or "");
                 if saved.get("resume_text") {
                     resume_text = str(saved.get("resume_text"));
                     saved_resume_title = str(saved.get("resume_title") or "");
                 }
+            } else {
+                autofill_error = str(saved.get("error") if saved else "") or "Couldn't load your profile.";
             }
-        } except Exception {}
+        } except Exception {
+            autofill_error = "Couldn't load your profile.";
+        }
+        autofill_loaded = True;
     }
 
     # Job descriptions can hold HTML. DOMParser reads it without running any of it.
@@ -136,30 +139,6 @@ def:pub ApplicantTools() -> JsxElement {
         tailoring = False;
     }
 
-    def fill_demo() {
-        if not full_name.strip() or not email.strip() {
-            autofill_message = "Name and email are required.";
-            return;
-        }
-        if "@" not in email or "." not in email {
-            autofill_message = "Enter a valid email address before filling.";
-            return;
-        }
-        filled_name = full_name.strip();
-        filled_email = email.strip();
-        filled_phone = phone.strip();
-        filled_linkedin = linkedin.strip();
-        autofill_message = "Demo form populated. Review or edit the fields below; submission is disabled.";
-    }
-
-    def clear_demo() {
-        filled_name = "";
-        filled_email = "";
-        filled_phone = "";
-        filled_linkedin = "";
-        autofill_message = "Demo form cleared. Your profile inputs remain above.";
-    }
-
     async def generate_review(e: FormEvent) {
         e.preventDefault();
         review_error = "";
@@ -182,54 +161,61 @@ def:pub ApplicantTools() -> JsxElement {
             <header className="flex flex-col gap-3">
                 <p className="text-sm font-semibold text-primary">LAUNCHPAD EXPERIMENTAL WORKSPACE</p>
                 <h1 className="text-3xl font-semibold tracking-tight">Application tools</h1>
-                <p className="max-w-3xl text-muted-foreground">Try two local prototypes: a sample application autofill and a job-specific resume review. Neither submits a job application or modifies your original resume.</p>
-                <p className="text-sm text-amber-700">Prototype only. Details come from your Launchpad profile, and edits here aren't saved. To fill real applications, use the Launchpad browser extension.</p>
+                <p className="max-w-3xl text-muted-foreground">Check what the Launchpad extension will fill on a job application, then review and tailor your resume for the job. Nothing here submits an application or changes your original resume.</p>
             </header>
 
-            <section className="rounded-2xl border bg-card p-6 shadow-sm">
-                <div className="mb-6 flex flex-col gap-1">
-                    <h2 className="text-2xl font-semibold">1. Applicant autofill</h2>
-                    <p className="text-sm text-muted-foreground">Enter details and populate the simulated job application below. Your existing CLI can test browser autofill on supported external forms separately.</p>
+            <section aria-labelledby="autofill-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
+                <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="flex flex-col gap-1">
+                        <h2 id="autofill-heading" className="text-2xl font-semibold">1. Your autofill profile</h2>
+                        <p className="max-w-3xl text-sm text-muted-foreground">This is what the Launchpad extension fills on a real application. Your saved profile comes first. Details read from your resume fill only what the profile leaves blank, so check those.</p>
+                    </div>
+                    <Link to="/me" className="inline-flex h-9 shrink-0 items-center self-start rounded-lg border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/10">Edit profile</Link>
                 </div>
-                <div className="grid gap-6 md:grid-cols-2">
-                    <div className="flex flex-col gap-4">
-                        <h3 className="font-semibold">Applicant profile</h3>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Full name
-                            <input className="rounded-lg border bg-background p-3 font-normal" placeholder="Test Applicant" value={full_name} onChange={lambda (e: ChangeEvent) { full_name = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Email
-                            <input type="email" className="rounded-lg border bg-background p-3 font-normal" placeholder="test@example.com" value={email} onChange={lambda (e: ChangeEvent) { email = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Phone
-                            <input className="rounded-lg border bg-background p-3 font-normal" placeholder="5551234567" value={phone} onChange={lambda (e: ChangeEvent) { phone = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">LinkedIn URL
-                            <input className="rounded-lg border bg-background p-3 font-normal" placeholder="https://linkedin.com/in/example" value={linkedin} onChange={lambda (e: ChangeEvent) { linkedin = e.target.value; }} />
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                            <Button onClick={fill_demo}>Autofill demo form</Button>
-                            <Button variant="outline" onClick={clear_demo}>Clear form</Button>
+                {(not autofill_loaded) and <p role="status" className="text-sm text-muted-foreground">Loading your profile...</p>}
+                {bool(autofill_error) and <p role="alert" className="text-sm text-red-600">{autofill_error}</p>}
+                {(autofill_loaded and not autofill_error) and <div className="flex flex-col gap-6">
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <div className="rounded-xl border bg-primary/5 p-5">
+                            <h3 className="mb-2 font-semibold">Contact details</h3>
+                            <dl>
+                                {for row in contact_rows {
+                                    <div key={row["key"]} className="flex items-start justify-between gap-4 border-b border-primary/10 py-2 last:border-0">
+                                        <dt className="text-sm text-muted-foreground">{row["label"]}</dt>
+                                        <dd className="flex min-w-0 flex-col items-end gap-1 text-right text-sm">
+                                            <span className={"break-all font-medium" if row["value"] else "text-muted-foreground"}>{row["value"] or "Not set"}</span>
+                                            {row["source"] == "resume" and <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">From resume, please check</span>}
+                                        </dd>
+                                    </div>
+                                }}
+                            </dl>
+                        </div>
+                        <div className="rounded-xl border bg-primary/5 p-5">
+                            <h3 className="mb-2 font-semibold">Application answers</h3>
+                            <dl>
+                                {for row in answer_rows {
+                                    <div key={row["key"]} className="flex items-start justify-between gap-4 border-b border-primary/10 py-2 last:border-0">
+                                        <dt className="text-sm text-muted-foreground">{row["label"]}</dt>
+                                        <dd className="flex min-w-0 flex-col items-end gap-1 text-right text-sm">
+                                            <span className={"break-words font-medium" if row["value"] else "text-muted-foreground"}>{row["value"] or "Not set"}</span>
+                                            {row["source"] == "resume" and <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">From resume, please check</span>}
+                                        </dd>
+                                    </div>
+                                }}
+                            </dl>
                         </div>
                     </div>
-                    <div className="flex flex-col gap-4 rounded-xl border bg-primary/5 p-5">
-                        <h3 className="font-semibold">Sample application form</h3>
-                        <p className="text-xs text-muted-foreground">Example field mappings: full_name, candidate[email], phone, linkedin.</p>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Candidate name
-                            <input className="rounded-lg border bg-background p-3 font-normal" value={filled_name} onChange={lambda (e: ChangeEvent) { filled_name = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Candidate email
-                            <input className="rounded-lg border bg-background p-3 font-normal" value={filled_email} onChange={lambda (e: ChangeEvent) { filled_email = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">Phone
-                            <input className="rounded-lg border bg-background p-3 font-normal" value={filled_phone} onChange={lambda (e: ChangeEvent) { filled_phone = e.target.value; }} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm font-medium">LinkedIn
-                            <input className="rounded-lg border bg-background p-3 font-normal" value={filled_linkedin} onChange={lambda (e: ChangeEvent) { filled_linkedin = e.target.value; }} />
-                        </label>
-                        <p className="text-sm text-primary">{autofill_message}</p>
-                        <button type="button" disabled={True} className="cursor-not-allowed rounded-full border border-muted-foreground/30 px-4 py-3 text-sm text-muted-foreground">Submit application (disabled)</button>
+                    <p className="text-sm">{("Resume attached to applications: " + autofill_resume) if autofill_resume else "No resume saved. Add one in your profile so it can be attached."}</p>
+                    <div className="rounded-xl border p-5 text-sm">
+                        <h3 className="mb-2 font-semibold">Fill a real application</h3>
+                        <ol className="list-decimal space-y-1 pl-5">
+                            <li>Open the job application in Chrome, with the Launchpad extension connected.</li>
+                            <li>Click Autofill this application in the Launchpad panel, or Fill this page in the extension menu.</li>
+                            <li>Review every field and answer the questions it leaves for you. You submit the application yourself.</li>
+                        </ol>
+                        <p className="mt-3 text-muted-foreground">Fields marked Not set stay blank. Demographic answers are kept in the extension's Saved answers and never sent to Launchpad. Date of birth and Social Security number are never filled.</p>
                     </div>
-                </div>
+                </div>}
             </section>
 
             <section className="rounded-2xl border bg-card p-6 shadow-sm">
