@@ -69,7 +69,10 @@ function render() {
   $("account-name").textContent = name ? `${name} (${user.email})` : user.email || "";
   $("resume-row").hidden = !resume;
   $("no-resume").hidden = Boolean(resume);
-  if (resume) $("resume-title").textContent = resume.title || "Saved resume";
+  if (resume) {
+    const forJob = resume.tailored && resume.tailored_for ? `, tailored for ${resume.tailored_for}` : resume.tailored ? ", tailored" : "";
+    $("resume-title").textContent = (resume.title || "Saved resume") + forJob;
+  }
 }
 
 async function targetTabId() {
@@ -101,7 +104,7 @@ async function runOnPage(apply) {
       args: [profile, apply],
     });
     const reports = frames.map((frame) => frame.result).filter(Boolean);
-    renderResults(reports);
+    renderResults(reports, profile.from_resume || []);
     showTrackForm(reports);
   } catch (error) {
     showMessage(friendlyInjectionError(error), true);
@@ -119,11 +122,25 @@ function friendlyInjectionError(error) {
 }
 
 // Labels come from the job site, so they are only ever inserted as text.
-function renderResults(reports) {
+function renderResults(reports, fromResume = []) {
   const box = $("results");
   box.replaceChildren();
   const fields = reports.flatMap((report) => report.fields);
   const unmatched = reports.reduce((total, report) => total + report.unmatched, 0);
+
+  const guessed = fields.filter((field) => field.status === "filled" && fromResume.includes(field.key));
+  if (guessed.length) {
+    const heading = document.createElement("h2");
+    heading.textContent = `Read from your resume. Please check (${guessed.length})`;
+    heading.classList.add("warn");
+    const list = document.createElement("ul");
+    for (const field of guessed) {
+      const item = document.createElement("li");
+      item.textContent = field.label;
+      list.append(item);
+    }
+    box.append(heading, list);
+  }
 
   for (const group of GROUPS) {
     const matching = fields.filter((field) => field.status === group.status);

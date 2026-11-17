@@ -44,6 +44,8 @@ PROTECTED = {
     "save_contact_details": {"token": "x", "phone": "", "city": "", "linkedin": "", "github": "", "portfolio": ""},
     "get_applicant_details": {"token": "x"},
     "tailor_resume_pdf": {"token": "x", "job_text": "x", "role": "x", "resume_content": ""},
+    "use_tailored_resume": {"token": "x", "pdf": "", "filename": "x.pdf", "job_title": "x"},
+    "use_default_resume": {"token": "x"},
     "save_application_answers": {"token": "x", "answers": {}},
     "list_tracker_applications": {"token": "x"},
     "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
@@ -179,6 +181,21 @@ def main() -> int:
     check("tailoring rejects a resume with no sections", alice_pdf.get("ok") is False and "sections" in str(alice_pdf.get("error")), raw[:200])
     _, payload, raw = http("/function/tailor_resume_pdf", {"token": bob, "job_text": "Python SQL", "role": "Engineer", "resume_content": ""}, bob)
     check("another user's tailoring doesn't use this resume", RESUME not in raw and result(payload).get("ok") is False, raw[:200])
+
+    # A chosen tailored resume replaces the default one for that user only.
+    tailored = "data:application/pdf;base64," + base64.b64encode(b"%PDF-1.4 tailored test").decode()
+    _, payload, raw = http("/function/use_tailored_resume", {"token": alice, "pdf": "data:text/plain;base64,aGk=", "filename": "x.pdf", "job_title": "x"}, alice)
+    check("only a PDF can be chosen for applications", result(payload).get("ok") is False, raw[:200])
+    _, payload, raw = http("/function/use_tailored_resume", {"token": alice, "pdf": tailored, "filename": "Resume - Engineer.pdf", "job_title": "Engineer"}, alice)
+    check("user can choose a tailored resume", (result(payload).get("application_resume") or {}).get("tailored") is True, raw[:200])
+    _, payload, raw = http("/function/get_user_profile_data", {"token": alice}, alice)
+    chosen = result(payload).get("application_resume") or {}
+    check("applications attach the tailored resume", chosen.get("content") == tailored and chosen.get("tailored_for") == "Engineer", raw[:200])
+    check("the user record doesn't carry the tailored PDF", "tailored_resume" not in (result(payload).get("user") or {}), raw[:200])
+    _, _, raw = http("/function/get_user_profile_data", {"token": bob}, bob)
+    check("another user doesn't get the tailored resume", tailored not in raw, raw[:200])
+    _, payload, raw = http("/function/use_default_resume", {"token": alice}, alice)
+    check("user can switch back to the default resume", (result(payload).get("application_resume") or {}).get("tailored") is False, raw[:200])
 
     # Saved answers stay with their owner, and demographic answers never reach the server.
     _, payload, raw = http("/function/save_application_answers", {"token": alice, "answers": {"school": "Michigan", "gender": "woman"}}, alice)

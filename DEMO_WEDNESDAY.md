@@ -15,6 +15,7 @@ git pull --ff-only origin main
 jac --version                    # expected 0.37.11
 jac install
 export TURSO_DATABASE_URL="$HOME/launchpad-demo.db"
+jac clean --cache --force        # a stale cache breaks the page after a restart
 jac run --dev --profile test main.jac
 ```
 
@@ -23,8 +24,8 @@ new shell. Keep the database outside the repo, and don't commit resumes, credent
 database files. Run `jac install` after every pull, because new packages are added from time
 to time.
 
-If a page keeps reloading on its own, stop the server, run `jac clean --cache`, and start it
-again.
+Clear the cache every time you start the server. Without it, a restart can show a build
+error ("format_salary are not exported") or a page that keeps reloading.
 
 Load the extension:
 
@@ -39,7 +40,7 @@ Check these routes before the talk:
 - `http://localhost:8000/login`: sign-in (the test profile signs in automatically)
 - `http://localhost:8000/jobs`: job feed with match scores
 - `http://localhost:8000/me`: profile, contact details, and application answers
-- `http://localhost:8000/tools`: autofill demo, resume review, and tailored PDF
+- `http://localhost:8000/tools`: autofill profile and tailored resume PDF
 - `http://localhost:8000/tracker`: application tracker
 
 Don't rely on Google sign-in or the external job APIs during the demo.
@@ -62,13 +63,17 @@ In the extension, click **Saved answers** and choose demographic answers, or
 Show the feed tailored to the saved profile, with a match score on each job. Open a job,
 point out its matched and missing skills, and click **Add to tracker**.
 
-**1:00–2:30: Resume review and tailored PDF.**
-Click **Apply now (demo)**. Applicant Tools opens with the job description and the saved
-resume already filled in. Click **Generate resume review** and show verified skills and
-requirements the resume doesn't support. Under **Tailored resume PDF**, click **Create
-tailored PDF**, show the list of what changed, and download it. Point out that it only
-reorders: the most relevant bullets move up and matching skills come first, and nothing is
-added or reworded.
+**1:00–2:30: Autofill profile and tailored resume.**
+Click **Apply now (demo)**. Applicant Tools opens with the job already selected. Under
+**Your autofill profile**, show exactly what the extension will fill, and which values were
+read from the resume. Under **Tailor your resume**, click **Tailor my resume**. Show the job
+keywords the resume has and doesn't mention, what changed, and the new PDF on the page.
+Point out that it edits the original PDF, so the fonts and layout stay the same: the most
+relevant bullets move up, matching skills come first, and AI rewords a few bullets in the
+job's terms (with `DEEPSEEK_API_KEY` in `.env`). Every rewording is checked so it adds no new
+skill, number, or claim. Click a missing keyword you really have, then **Add 1 skill and tailor
+again** to add it to the skills line. Click **Use this resume for applications**, so the
+extension attaches it on the real application.
 
 **2:30–4:30: The extension on a real application.**
 Open a public Greenhouse or Lever application, such as a job from
@@ -91,7 +96,7 @@ Insights, and export a CSV.
 | --- | --- |
 | Sign-in, profile, onboarding | Implemented; identity comes from the verified session |
 | Job feed, filters, match scores | Implemented; local listings are the fallback |
-| Resume review and tailored PDF | Implemented; reorders only, never invents content |
+| Tailored resume PDF | Implemented; edits the original PDF in place (same fonts and layout), reorders bullets and skills, AI rewording checked for new claims, adds only skills you confirm; you choose which resume to send |
 | Extension panel | Implemented on Greenhouse, Lever, Ashby, and more; Workday untested |
 | Application tracker | Saved per user; Add to tracker from jobs and the extension |
 | External job APIs | Network-dependent; Himalayas needs no key |
@@ -102,7 +107,7 @@ Insights, and export a CSV.
 
 - **Login fails:** check that the server was started with `--profile test` and the
   `TURSO_DATABASE_URL` above.
-- **A page keeps reloading:** run `jac clean --cache` and restart the server.
+- **A build error or a page that keeps reloading:** stop the server, run `jac clean --cache --force`, and start it again.
 - **External jobs are slow or empty:** stay with the local listings.
 - **The extension panel doesn't appear:** reload the extension, then the job page, and check
   that it says it's connected. The toolbar popup's **Fill this page** works on any site.
