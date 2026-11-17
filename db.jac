@@ -135,6 +135,11 @@ def init_db(conn: any = None) {
     for contact_column in ["city", "linkedin", "github", "portfolio", "application_answers", "tailored_resume", "tailored_resume_title", "tailored_for"] {
         if not any(column[1] == contact_column for column in user_columns) {
             db_conn.execute(f"ALTER TABLE users ADD COLUMN {contact_column} TEXT;");
+        } 
+    }
+     for section_column in ["experience_json", "education_json", "skills_json", "other_links_json", "job_preferences"] {
+        if not any(column[1] == section_column for column in user_columns) {
+            db_conn.execute(f"ALTER TABLE users ADD COLUMN {section_column} TEXT;");
         }
     }
     has_onboarding_completed = any(column[1] == "onboarding_completed" for column in user_columns);
@@ -636,6 +641,29 @@ def save_contact_details(
     db_conn.commit();
     return get_user_by_id(user_id, conn=db_conn);
 }
+
+
+"""Save the resume sections shown on the profile page."""
+def save_resume_sections(
+    user_id: int,
+    experience_json: str,
+    education_json: str,
+    skills_json: str,
+    other_links_json: str,
+    github: str,
+    linkedin: str,
+    portfolio: str,
+    conn: any = None
+) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET experience_json = ?, education_json = ?, skills_json = ?, other_links_json = ?, github = ?, linkedin = ?, portfolio = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (experience_json, education_json, skills_json, other_links_json, github, linkedin, portfolio, user_id)
+    );
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
 
 def save_user_profile(
     user_id: int,

@@ -51,6 +51,11 @@ PROTECTED = {
     "add_tracker_application": {"token": "x", "role": "x", "company": "x", "applied_date": "2026-01-01", "description": "", "pay": None, "status": "Applied"},
     "set_tracker_status": {"token": "x", "app_id": 1, "status": "Offer"},
     "remove_tracker_application": {"token": "x", "app_id": 1},
+    "get_resume_profile": {"token": "x"},
+    "parse_resume_upload": {"token": "x", "resume_content": ""},
+    "save_resume_profile": {"token": "x", "profile": {}},
+    "get_job_preferences": {"token": "x"},
+    "save_job_preferences": {"token": "x", "preferences": {}},
 }
 failures: list[str] = []
 
