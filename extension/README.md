@@ -5,6 +5,8 @@ fills fields for you to review. **It never submits an application.**
 
 ## Try it
 
+New to the project? Follow the step-by-step [setup guide](../EXTENSION_SETUP.md).
+
 1. Start Launchpad:
 
    ```bash
