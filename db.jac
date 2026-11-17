@@ -63,6 +63,11 @@ def init_db(conn: any = None) {
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT,
             phone TEXT,
+            city TEXT,
+            linkedin TEXT,
+            github TEXT,
+            portfolio TEXT,
+            application_answers TEXT,
             auth_provider TEXT DEFAULT 'local',
             oauth_id TEXT,
             first_name TEXT,
@@ -124,6 +129,16 @@ def init_db(conn: any = None) {
     if not has_cached_job_query {
         db_conn.execute("ALTER TABLE users ADD COLUMN cached_job_query TEXT;");
     }
+    for contact_column in ["city", "linkedin", "github", "portfolio", "application_answers"] {
+        if not any(column[1] == contact_column for column in user_columns) {
+            db_conn.execute(f"ALTER TABLE users ADD COLUMN {contact_column} TEXT;");
+        } 
+    }
+     for section_column in ["experience_json", "education_json", "skills_json", "other_links_json", "job_preferences"] {
+        if not any(column[1] == section_column for column in user_columns) {
+            db_conn.execute(f"ALTER TABLE users ADD COLUMN {section_column} TEXT;");
+        }
+    }
     has_onboarding_completed = any(column[1] == "onboarding_completed" for column in user_columns);
     if not has_onboarding_completed {
         db_conn.execute("ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;");
@@ -157,12 +172,17 @@ def init_db(conn: any = None) {
             status TEXT DEFAULT 'applied',
             applied_date TEXT,
             notes TEXT,
+            pay INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE SET NULL
         );
     """);
+    application_columns = db_conn.execute("PRAGMA table_info(applications);").fetchall();
+    if not any(column[1] == "pay" for column in application_columns) {
+        db_conn.execute("ALTER TABLE applications ADD COLUMN pay INTEGER;");
+    }
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_user ON applications(user_id);");
     db_conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);");
 
@@ -570,6 +590,70 @@ def update_user(
     return get_user_by_id(user_id, conn=db_conn);
 }
 
+def save_application_answers(user_id: int, answers_json: str, conn: any = None) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET application_answers = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (answers_json, user_id)
+    );
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
+"""Save the job preferences (role level, work style, company size, extra skills)."""
+def save_job_preferences_row(user_id: int, preferences_json: str, conn: any = None) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET job_preferences = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (preferences_json, user_id)
+    );
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
+
+"""Save the details used to fill job applications. A blank value clears that detail."""
+def save_contact_details(
+    user_id: int,
+    phone: str,
+    city: str,
+    linkedin: str,
+    github: str,
+    portfolio: str,
+    conn: any = None
+) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET phone = ?, city = ?, linkedin = ?, github = ?, portfolio = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (phone, city, linkedin, github, portfolio, user_id)
+    );
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
+
+"""Save the resume sections shown on the profile page."""
+def save_resume_sections(
+    user_id: int,
+    experience_json: str,
+    education_json: str,
+    skills_json: str,
+    other_links_json: str,
+    github: str,
+    linkedin: str,
+    portfolio: str,
+    conn: any = None
+) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    db_conn.execute(
+        "UPDATE users SET experience_json = ?, education_json = ?, skills_json = ?, other_links_json = ?, github = ?, linkedin = ?, portfolio = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (experience_json, education_json, skills_json, other_links_json, github, linkedin, portfolio, user_id)
+    );
+    db_conn.commit();
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
+
 def save_user_profile(
     user_id: int,
     first_name: str | None = None,
@@ -733,15 +817,16 @@ def create_application(
     status: str = "applied",
     applied_date: str | None = None,
     notes: str | None = None,
+    pay: int | None = None,
     conn: any = None
 ) -> dict[str, any] {
     db_conn = conn if conn is not None else get_db_connection();
     cur = db_conn.cursor();
     cur.execute("""
         INSERT INTO applications (
-            user_id, job_title, company, resume_id, job_url, status, applied_date, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, job_title, company, resume_id, job_url, status, applied_date, notes));
+            user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, job_title, company, resume_id, job_url, status, applied_date, notes, pay));
     db_conn.commit();
     app_id = cur.lastrowid;
     app = get_application_by_id(app_id, conn=db_conn);

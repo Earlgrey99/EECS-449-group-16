@@ -13,8 +13,8 @@ The score is a weighted mix of three parts:
 import re;
 import base64;
 import io;
-import from db { get_user_by_email, get_user_by_oauth_id, list_resumes_by_user }
-import from services.auth_sync { resolve_token_identity }
+import from db { get_user_by_email, list_resumes_by_user }
+import from services.auth_sync { _resolve_caller }
 
 # How much each part counts toward the final score (they add up to 1.0).
 glob SKILL_WEIGHT: float = 0.60;
@@ -332,24 +332,9 @@ def resume_text_from_content(content: str | None) -> str {
     }
 }
 
-"""Find the logged-in user's newest resume and return its text ("" if none).
-
-The user is found the same way the profile page does it: by email, or by
-the login token the browser sends.
-"""
-def find_user_resume_text(token: str | None, email: str | None, conn: any) -> str {
-    clean_email = str(email).strip().lower() if email else "";
-    identity: dict[str, any] = resolve_token_identity(token) if token else {};
-    if not clean_email and identity.get("email") {
-        clean_email = str(identity["email"]).strip().lower();
-    }
-    user: any = None;
-    if clean_email {
-        user = get_user_by_email(clean_email, conn=conn);
-    }
-    if user is None and identity.get("user_id") {
-        user = get_user_by_oauth_id(str(identity["user_id"]), auth_provider="google", conn=conn);
-    }
+"""Find this user's newest resume and return its text ("" if none)."""
+def find_user_resume_text(email: str, conn: any) -> str {
+    user = get_user_by_email(str(email).strip().lower(), conn=conn);
     if user is None {
         return "";
     }
@@ -371,16 +356,18 @@ The jobs page calls this right after it loads the jobs. It returns:
                  "matched": "python, sql, apis", "missing": ""}, ...]}
 "has_resume" is False when the user hasn't uploaded a resume yet.
 """
-def:pub get_resume_match_scores(
-    jobs: list[dict[str, any]],
-    token: str | None = None,
-    email: str | None = None,
-    conn: any = None
-) -> dict[str, any] {
-    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
+def:protect get_resume_match_scores(jobs: list[dict[str, any]], token: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
+    }
+    return _match_scores_for(jobs, caller["email"]);
+}
+
+def _match_scores_for(jobs: list[dict[str, any]], email: str, conn: any = None) -> dict[str, any] {
     resume_text = "";
     try {
-        resume_text = find_user_resume_text(token, email, actual_conn);
+        resume_text = find_user_resume_text(email, conn);
     } except Exception {
         resume_text = "";
     }

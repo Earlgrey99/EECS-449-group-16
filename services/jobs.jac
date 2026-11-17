@@ -7,8 +7,8 @@ import re;
 import urllib.error;
 import urllib.parse;
 import urllib.request;
-import from db { load_env_file, get_user_by_email, get_user_by_oauth_id }
-import from .auth_sync { resolve_token_identity }
+import from db { load_env_file, get_user_by_email }
+import from .auth_sync { _resolve_caller }
 
 glob JOBS: list[dict[str, str | int]] = [
     {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local", "logo": ""},
@@ -497,6 +497,12 @@ def fetch_usajobs(
     return [normalize_usajobs_job(item) for item in items];
 }
 
+"""Himalayas only accepts a country here, not "Remote" or a city like "Chicago, IL"."""
+def _is_country_name(location: str | None) -> bool {
+    value = str(location or "").strip();
+    return bool(value) and "," not in value and "remote" not in value.lower();
+}
+
 def fetch_himalayas(
     n: int,
     search: str,
@@ -509,7 +515,7 @@ def fetch_himalayas(
     key = api_key or os.environ.get("HIMALAYAS_API_KEY", "");
     base_url = build_himalayas_url(domain=domain, endpoint=endpoint);
     query_params: dict[str, any] = {"q": search, "limit": min(max(n, 1), 20)};
-    if location {
+    if _is_country_name(location) {
         query_params["country"] = location;
     }
     url = f"{base_url}?{urllib.parse.urlencode(query_params)}";
@@ -689,7 +695,8 @@ def fetch(
             matched_any_loc = False;
             for loc_target in targets {
                 if "remote" in loc_target {
-                    if "remote" in job_loc {
+                    # Himalayas is a remote-only board. Its locations list countries.
+                    if "remote" in job_loc or job.get("source") == "himalayas" {
                         matched_any_loc = True;
                         break;
                     }
@@ -717,20 +724,17 @@ def fetch(
     return filtered_jobs[:n];
 }
 
-def:pub get_user_tailored_jobs(
-    email: str | None = None,
-    token: str | None = None,
-    conn: any = None
-) -> dict[str, any] {
-    actual_conn = conn if (conn is not None and not isinstance(conn, str)) else None;
-    clean_email = str(email).strip().lower() if (email and str(email).strip()) else None;
-    resolved_info = resolve_token_identity(token) if token else {};
-
-    if not clean_email and resolved_info.get("email") {
-        clean_email = str(resolved_info["email"]).strip().lower();
+def:protect get_user_tailored_jobs(token: str) -> dict[str, any] {
+    caller = _resolve_caller(token);
+    if not caller["ok"] {
+        return caller;
     }
+    return _tailored_jobs_for(caller["email"]);
+}
 
-    oauth_id = resolved_info.get("user_id");
+def _tailored_jobs_for(email: str, conn: any = None) -> dict[str, any] {
+    actual_conn = conn;
+    clean_email = str(email).strip().lower();
 
     user: any = None;
     if clean_email {
@@ -738,12 +742,7 @@ def:pub get_user_tailored_jobs(
             user = get_user_by_email(clean_email, conn=actual_conn);
         } except Exception {}
     }
-    if user is None and oauth_id {
-        try {
-            user = get_user_by_oauth_id(str(oauth_id), auth_provider="google", conn=actual_conn);
-        } except Exception {}
-    }
-    
+
     if user and user.get("cached_job_query") {
         query_dict: dict[str, any] = {};
         try {

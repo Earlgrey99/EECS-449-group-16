@@ -11,7 +11,7 @@ import from db {
 }
 import from services.auth_sync {
     is_test_profile,
-    get_test_user_session
+    _test_user_session
 }
 import from jaclang.project.config { get_config }
 import from jaclang.server.identity.config { signing_secret, signing_algorithm }
@@ -122,7 +122,7 @@ test "get_test_user_session rejects requests when not in test profile" {
 
         cfg: any = get_config();
         if cfg and getattr(cfg, "active_profile", "") != "test" {
-            res = get_test_user_session(conn=conn);
+            res = _test_user_session(conn=conn);
             assert res["ok"] is False;
             assert "error" in res;
             assert "only available in test profile" in res["error"];
@@ -143,7 +143,7 @@ test "get_test_user_session generates signed JWT session in test profile" {
 
     try {
         os.environ["DEV_AUTO_LOGIN"] = "1";
-        res = get_test_user_session(conn=conn);
+        res = _test_user_session(conn=conn);
         assert res["ok"] is True;
         assert "token" in res;
         assert "user" in res;
@@ -156,20 +156,7 @@ test "get_test_user_session generates signed JWT session in test profile" {
         assert token and len(token) > 20;
 
         # Validate JWT token claims and signature
-        sec = "eecs449-group16-dev-secret-key-32chars";
-        algo = "HS256";
-        try {
-            resolved_sec = signing_secret();
-            if resolved_sec {
-                sec = resolved_sec;
-            }
-            resolved_algo = signing_algorithm();
-            if resolved_algo {
-                algo = resolved_algo;
-            }
-        } except Exception {}
-
-        claims = jwt_decode(token, sec, algorithms=[algo]);
+        claims = jwt_decode(token, signing_secret(), algorithms=[signing_algorithm()]);
         assert claims is not None;
         assert claims.get("email") == "testuser@example.com";
         assert claims.get("preferred_username") == "Test User";
