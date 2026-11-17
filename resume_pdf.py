@@ -1,18 +1,43 @@
 """Tailor a resume PDF to a job and produce a new PDF (issue #39).
 
-Tailoring only reorders what the resume already says:
+PDFs are edited in place by resume_inplace.py, keeping their fonts and layout. This
+module reads resumes as text, matches keywords, and, for text resumes or PDFs that
+can't be edited, lays out a new PDF that only reorders what the resume already says:
   - within each job or project, the bullets most relevant to the posting move first
   - within each skills line, skills the posting asks for move first
-Nothing is added, removed, or reworded, and section order stays the same.
 """
 from __future__ import annotations
 
 import base64
+import importlib.util
 import io
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 
 from resume_tailoring import tokens
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_sibling(name: str):
+    """Import a module that sits next to this file.
+
+    The Jac server loads this file through its own importer, and a plain "import x"
+    from here can't find new sibling modules there, so they are loaded by path.
+    """
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, os.path.join(_HERE, name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
 
 MAX_PDF_BYTES = 5 * 1024 * 1024
 MAX_JOB_CHARS = 12000
@@ -282,8 +307,19 @@ def resume_bytes(content: str) -> tuple[bytes, str]:
     return data, ("pdf" if data.startswith(b"%PDF") else "text")
 
 
-def tailor_resume(content: str, job_text: str) -> dict:
-    """Tailor a resume (PDF or text) to a job. Returns the new PDF and a list of changes."""
+def _job_casing(skill: str, job_text: str) -> str:
+    """The skill as the job posting writes it ("Kubernetes", not "kubernetes")."""
+    clean = re.sub(r"\s+", " ", str(skill or "")).strip()[:40]
+    match = re.search(r"(?<![\w+#])" + re.escape(clean) + r"(?![\w+#])", job_text, re.I)
+    return match.group(0) if match else clean
+
+
+def tailor_resume(content: str, job_text: str, job_title: str = "", extra_skills: list[str] | None = None, use_ai: bool = False) -> dict:
+    """Tailor a resume (PDF or text) to a job. Returns the new PDF and a list of changes.
+
+    A PDF is edited in place (resume_inplace), so its fonts and layout stay the same. A
+    text resume, or a PDF that can't be edited, is laid out again from its text.
+    """
     if not str(job_text or "").strip():
         raise ValueError("Paste the job description first.")
     if len(job_text) > MAX_JOB_CHARS:
@@ -292,6 +328,33 @@ def tailor_resume(content: str, job_text: str) -> dict:
     if len(data) > MAX_PDF_BYTES:
         raise ValueError("The resume file is larger than 5 MB.")
     text = pdf_text(data) if kind == "pdf" else data.decode("utf-8", errors="replace")
+    skills = [_job_casing(skill, job_text) for skill in (extra_skills or [])[:10] if str(skill or "").strip()]
+    if kind == "pdf":
+        resume_ai = load_sibling("resume_ai")
+        resume_inplace = load_sibling("resume_inplace")
+
+        rewriter = None
+        ai = "off"
+        if use_ai and resume_ai.has_key():
+            def rewriter(candidates):
+                return resume_ai.suggest_rewrites(candidates, job_title, job_text)
+        elif use_ai:
+            ai = "no_key"
+        try:
+            result = resume_inplace.tailor_pdf(data, job_text, skills, rewriter)
+        except ValueError:
+            raise
+        except Exception:
+            result = None
+        if result is not None:
+            return {
+                "pdf": result["pdf"],
+                "changes": result["changes"],
+                "notes": result["notes"],
+                "ai": result["ai"] if rewriter is not None else ai,
+                "method": "in_place",
+                "keywords": keyword_match(text, job_text),
+            }
     resume = parse_resume(text)
     if not resume.sections:
         raise ValueError("Couldn't find resume sections such as Experience or Education. Try a PDF exported from a document, not a scan.")
@@ -300,6 +363,9 @@ def tailor_resume(content: str, job_text: str) -> dict:
     return {
         "pdf": render_to_fit(tailored, page_count(data) if kind == "pdf" else None),
         "changes": changes,
+        "notes": ["Your PDF couldn't be edited directly, so this copy was laid out again from its text."] if kind == "pdf" else [],
+        "ai": "off",
+        "method": "rebuilt",
         "sections": [section.title for section in tailored.sections],
         "keywords": keyword_match(text, job_text),
     }

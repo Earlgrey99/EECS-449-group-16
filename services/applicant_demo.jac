@@ -7,7 +7,7 @@ import base64;
 import re;
 import applicant_web;
 import resume_pdf;
-import from db { list_resumes_by_user, save_tailored_resume }
+import from db { list_resumes_by_user, save_tailored_resume, load_env_file }
 import from .auth_sync { _resolve_caller }
 import from .compatibility { resume_text_from_content }
 import from .profile_llm { _read_answers, _details_from }
@@ -115,10 +115,13 @@ def:protect get_applicant_details(token: str) -> dict[str, any] {
 
 """Make a tailored copy of the user's resume as a PDF (issue #39).
 
-Uses an uploaded resume if one is given, otherwise the newest saved resume. It only
-reorders what the resume already says, and returns the PDF with a list of changes.
+Uses an uploaded resume if one is given, otherwise the newest saved resume. A PDF is
+edited in place: bullets and skills that match the job move up, skills the user
+confirmed are added, and, with use_ai, an AI model rewords bullets in the job's terms
+(each rewrite is checked so it adds no new claims). Returns the PDF and what changed.
+add_skills is a comma-separated list, because HTTP calls may send "None" for it.
 """
-def _tailor_for(user: dict[str, any], job_text: str, role: str, resume_content: str, conn: any = None) -> dict[str, any] {
+def _tailor_for(user: dict[str, any], job_text: str, role: str, resume_content: str, add_skills: str = "", use_ai: bool = False, conn: any = None) -> dict[str, any] {
     content = str(resume_content or "");
     if not content.strip() {
         resumes = list_resumes_by_user(int(user["id"]), conn=conn);
@@ -128,7 +131,12 @@ def _tailor_for(user: dict[str, any], job_text: str, role: str, resume_content: 
         return {"ok": False, "error": "Upload a resume first, here or in your profile."};
     }
     try {
-        result = resume_pdf.tailor_resume(content, str(job_text or ""));
+        skills_text = "" if add_skills is None or str(add_skills) == "None" else str(add_skills);
+        skills = [item.strip() for item in skills_text.split(",") if item.strip()];
+        if use_ai {
+            load_env_file();
+        }
+        result = resume_pdf.tailor_resume(content, str(job_text or ""), job_title=str(role or ""), extra_skills=skills, use_ai=bool(use_ai) and str(use_ai) != "False");
     } except ValueError as e {
         return {"ok": False, "error": str(e)};
     } except Exception {
@@ -140,6 +148,9 @@ def _tailor_for(user: dict[str, any], job_text: str, role: str, resume_content: 
         "pdf": "data:application/pdf;base64," + base64.b64encode(result["pdf"]).decode("ascii"),
         "filename": f"Resume - {safe_role}.pdf",
         "changes": result["changes"],
+        "notes": result.get("notes") or [],
+        "ai": result.get("ai") or "off",
+        "method": result.get("method") or "rebuilt",
         "keywords": result["keywords"]
     };
 }
@@ -208,7 +219,7 @@ def:protect use_default_resume(token: str) -> dict[str, any] {
     return {"ok": True, "application_resume": _application_resume({}, resumes[0] if resumes else None)};
 }
 
-def:protect tailor_resume_pdf(token: str, job_text: str, role: str, resume_content: str) -> dict[str, any] {
+def:protect tailor_resume_pdf(token: str, job_text: str, role: str, resume_content: str, add_skills: str = "", use_ai: bool = False) -> dict[str, any] {
     caller = _resolve_caller(token);
     if not caller["ok"] {
         return caller;
@@ -217,5 +228,5 @@ def:protect tailor_resume_pdf(token: str, job_text: str, role: str, resume_conte
     if user is None {
         return {"ok": False, "error": "Save your profile first."};
     }
-    return _tailor_for(user, job_text, role, resume_content);
+    return _tailor_for(user, job_text, role, resume_content, add_skills, use_ai);
 }

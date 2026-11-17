@@ -39,6 +39,12 @@ def:pub ApplicantTools() -> JsxElement {
     has tailor_changes: list[str] = [];
     has matched_keywords: list[str] = [];
     has missing_keywords: list[str] = [];
+    # Skills from the job that the user says they have; tailoring adds them to a skills line.
+    has confirmed_skills: list[str] = [];
+    has use_ai: bool = True;
+    has ai_status: str = "";
+    has tailor_notes: list[str] = [];
+    has tailor_method: str = "";
 
     # Which resume the extension attaches to applications.
     has app_resume_title: str = "";
@@ -160,6 +166,8 @@ def:pub ApplicantTools() -> JsxElement {
         choice_error = "";
         tailored_pdf = "";
         tailor_changes = [];
+        tailor_notes = [];
+        ai_status = "";
         matched_keywords = [];
         missing_keywords = [];
         if not job_description.strip() {
@@ -170,13 +178,17 @@ def:pub ApplicantTools() -> JsxElement {
         tailoring = True;
         try {
             tok = str(localStorage.getItem("jac_token") or "");
-            res: any = await tailor_resume_pdf(token=tok, job_text=job_description, role=role, resume_content=upload_content);
+            res: any = await tailor_resume_pdf(token=tok, job_text=job_description, role=role, resume_content=upload_content, add_skills=", ".join(confirmed_skills), use_ai=use_ai);
             if res and res.get("ok") {
                 tailored_pdf = str(res.get("pdf"));
                 tailored_name = str(res.get("filename"));
                 tailored_role = role.strip();
                 changed: list[str] = res.get("changes") or [];
                 tailor_changes = changed;
+                notes: list[str] = res.get("notes") or [];
+                tailor_notes = notes;
+                ai_status = str(res.get("ai") or "");
+                tailor_method = str(res.get("method") or "");
                 words: any = res.get("keywords") or {};
                 matched: list[str] = words.get("matched") or [];
                 missing: list[str] = words.get("missing") or [];
@@ -190,6 +202,33 @@ def:pub ApplicantTools() -> JsxElement {
             tailor_error = "Couldn't reach the tailoring service.";
         }
         tailoring = False;
+    }
+
+    def toggle_skill(word: str) {
+        if word in confirmed_skills {
+            confirmed_skills = [item for item in confirmed_skills if item != word];
+        } else {
+            confirmed_skills = confirmed_skills + [word];
+        }
+    }
+
+    def ai_message -> str {
+        if ai_status == "used" {
+            return "AI reworded some bullets to use the job's terms. Read each one in the list below.";
+        }
+        if ai_status == "none" {
+            return "AI suggested no rewording that passed the checks, so no bullets were reworded.";
+        }
+        if ai_status == "no_key" {
+            return "AI rewording is off on this server: add DEEPSEEK_API_KEY to .env to turn it on.";
+        }
+        if ai_status == "failed" {
+            return "The AI service didn't respond, so bullets were only reordered.";
+        }
+        if ai_status == "skipped" {
+            return "Your resume's fonts can't be reused for new text, so bullets were only reordered.";
+        }
+        return "";
     }
 
     async def use_tailored {
@@ -296,7 +335,7 @@ def:pub ApplicantTools() -> JsxElement {
             <section aria-labelledby="tailor-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
                 <div className="mb-6 flex flex-col gap-1">
                     <h2 id="tailor-heading" className="text-2xl font-semibold">2. Tailor your resume</h2>
-                    <p className="max-w-3xl text-sm text-muted-foreground">Launchpad reorders your resume PDF for the job: the bullets and skills that match the job's keywords move up. Nothing is added, removed, or reworded. Review the new PDF, then choose which resume to send.</p>
+                    <p className="max-w-3xl text-sm text-muted-foreground">Launchpad edits a copy of your resume PDF for the job and keeps its fonts and layout. Bullets and skills that match the job move up, and AI can reword bullets in the job's terms. It never adds a skill, number, or claim your resume doesn't already show, unless you choose a skill below. Review the new PDF, then choose which resume to send.</p>
                 </div>
 
                 <div className="mb-6 flex flex-col gap-3 rounded-xl border bg-primary/5 p-4 text-sm md:flex-row md:items-center md:justify-between">
@@ -336,8 +375,12 @@ def:pub ApplicantTools() -> JsxElement {
 
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                     <Button type="button" disabled={tailoring} onClick={make_tailored_pdf}>{"Tailoring..." if tailoring else "Tailor my resume"}</Button>
-                    <p className="text-xs text-muted-foreground">Runs on the Launchpad server, not a third-party AI service.</p>
+                    <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={use_ai} onChange={lambda (e: ChangeEvent) { use_ai = bool(e.target.checked); }} />
+                        Reword bullets with AI
+                    </label>
                 </div>
+                <p className="mt-2 text-xs text-muted-foreground">{("With AI on, your resume's bullets and the job description are sent to DeepSeek to suggest wording. Reordering runs on the Launchpad server only." if use_ai else "Runs on the Launchpad server only. Nothing is sent to an AI service.")}</p>
                 {bool(tailor_error) and <p role="alert" className="mt-3 text-sm text-red-600">{tailor_error}</p>}
 
                 {bool(tailored_pdf) and <div className="mt-6 flex flex-col gap-5">
@@ -356,19 +399,31 @@ def:pub ApplicantTools() -> JsxElement {
                             {(not missing_keywords) and <p className="text-muted-foreground">None. Your resume covers the job's main keywords.</p>}
                             <ul className="flex flex-wrap gap-2">
                                 {for word in missing_keywords {
-                                    <li key={word} className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{word}</li>
+                                    <li key={word}>
+                                        <button type="button" aria-pressed={word in confirmed_skills} onClick={lambda { toggle_skill(word); }} className={("rounded-full px-2.5 py-1 text-xs font-medium " + ("bg-primary text-primary-foreground" if word in confirmed_skills else "bg-muted text-muted-foreground hover:bg-primary/10"))}>{(("✓ " if word in confirmed_skills else "+ ") + word)}</button>
+                                    </li>
                                 }}
                             </ul>
-                            <p className="mt-2 text-xs text-muted-foreground">Launchpad doesn't add these. Add one to your resume yourself only if it's true for you.</p>
+                            <p className="mt-2 text-xs text-muted-foreground">Launchpad doesn't add these on its own. Select only skills you really have, then tailor again to add them to your skills line.</p>
+                            {bool(confirmed_skills) and <Button type="button" variant="outline" className="mt-3" disabled={tailoring} onClick={make_tailored_pdf}>{"Add " + str(len(confirmed_skills)) + (" skill" if len(confirmed_skills) == 1 else " skills") + " and tailor again"}</Button>}
                         </div>
                     </div>
                     <div className="rounded-xl border bg-primary/5 p-4 text-sm">
                         <p className="font-medium">{("What changed" if tailor_changes else "Your resume was already in the best order for this job.")}</p>
+                        {bool(ai_message()) and <p className="mt-1 text-muted-foreground">{ai_message()}</p>}
                         <ul className="mt-2 list-disc pl-5">
                             {for change in tailor_changes {
                                 <li key={change}>{change}</li>
                             }}
                         </ul>
+                        {bool(tailor_notes) and <div className="mt-3">
+                            <p className="font-medium">Left as it was</p>
+                            <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                                {for note in tailor_notes {
+                                    <li key={note}>{note}</li>
+                                }}
+                            </ul>
+                        </div>}
                     </div>
                     {bool(preview_url) and <iframe src={preview_url} title="Tailored resume preview" className="h-[75vh] min-h-96 w-full rounded-xl border bg-white" />}
                     <div className="flex flex-wrap items-center gap-3">

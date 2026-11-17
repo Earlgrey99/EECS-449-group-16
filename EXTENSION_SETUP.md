@@ -73,8 +73,11 @@ folder in step 3. You still need Launchpad running from Part 1 to connect.
 
 1. **Optional: tailor your resume to the job.** On <http://localhost:8000/tools>,
    under **Tailor your resume**, choose or paste the job and click **Tailor my
-   resume**. If the new PDF looks right, click **Use this resume for applications**.
-   Click **Switch back to my default resume** when you're done with that job.
+   resume**. Your PDF keeps its look: matching bullets and skills move up, and with
+   **Reword bullets with AI** on, a few bullets are reworded in the job's terms (this
+   needs a `DEEPSEEK_API_KEY` in `.env`; ask the team for it). If the new PDF looks
+   right, click **Use this resume for applications**. Click **Switch back to my
+   default resume** when you're done with that job.
 2. **Open the application.** On Greenhouse, Lever, Ashby and similar job sites, a
    Launchpad panel appears on the page. Click **Autofill this application**. On other
    sites, click the toolbar icon, then **Fill this page**.

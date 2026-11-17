@@ -68,9 +68,12 @@ Click **Apply now (demo)**. Applicant Tools opens with the job already selected.
 **Your autofill profile**, show exactly what the extension will fill, and which values were
 read from the resume. Under **Tailor your resume**, click **Tailor my resume**. Show the job
 keywords the resume has and doesn't mention, what changed, and the new PDF on the page.
-Point out that it only reorders: the most relevant bullets move up and matching skills come
-first, nothing is added or reworded, and a one-page resume stays one page. Click **Use this
-resume for applications**, so the extension attaches it on the real application.
+Point out that it edits the original PDF, so the fonts and layout stay the same: the most
+relevant bullets move up, matching skills come first, and AI rewords a few bullets in the
+job's terms (with `DEEPSEEK_API_KEY` in `.env`). Every rewording is checked so it adds no new
+skill, number, or claim. Click a missing keyword you really have, then **Add 1 skill and tailor
+again** to add it to the skills line. Click **Use this resume for applications**, so the
+extension attaches it on the real application.
 
 **2:30–4:30: The extension on a real application.**
 Open a public Greenhouse or Lever application, such as a job from
@@ -93,7 +96,7 @@ Insights, and export a CSV.
 | --- | --- |
 | Sign-in, profile, onboarding | Implemented; identity comes from the verified session |
 | Job feed, filters, match scores | Implemented; local listings are the fallback |
-| Tailored resume PDF | Implemented; reorders only, never invents content; you choose which resume to send |
+| Tailored resume PDF | Implemented; edits the original PDF in place (same fonts and layout), reorders bullets and skills, AI rewording checked for new claims, adds only skills you confirm; you choose which resume to send |
 | Extension panel | Implemented on Greenhouse, Lever, Ashby, and more; Workday untested |
 | Application tracker | Saved per user; Add to tracker from jobs and the extension |
 | External job APIs | Network-dependent; Himalayas needs no key |
