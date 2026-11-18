@@ -54,6 +54,11 @@ client_auth_callback_url = "http://localhost:8000/login"
 client_id = "${CLIENT_ID}"
 client_secret = "${CLIENT_SECRET}"
 
+[client.app_meta_data]
+title = "Launchpad"
+description = "Find jobs, tailor your resume, and track every application in one place."
+theme_color = "#059669"
+
 [client.vite]
 plugins = [
   "tailwindcss()",

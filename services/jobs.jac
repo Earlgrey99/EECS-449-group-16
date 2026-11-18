@@ -4,11 +4,13 @@ import base64;
 import json;
 import os;
 import re;
+import from html { unescape }
 import urllib.error;
 import urllib.parse;
 import urllib.request;
 import from db { load_env_file, get_user_by_email }
 import from .auth_sync { _resolve_caller }
+import from .locations { location_matches }
 
 glob JOBS: list[dict[str, str | int]] = [
     {"id": 1, "title": "Frontend Engineer", "company": "Lumen Labs", "location": "Cleveland, OH", "salary": "115,000", "type": "Full-time", "tags": "React, TypeScript, CSS", "desc": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "link": "", "snippet": "Build accessible, fast interfaces for our analytics product alongside a small design-minded team.", "source": "local", "logo": ""},
@@ -19,6 +21,8 @@ glob JOBS: list[dict[str, str | int]] = [
     {"id": 6, "title": "Product Designer", "company": "Marigold Studio", "location": "Cleveland, OH", "salary": "96,000", "type": "Contract", "tags": "Figma, Prototyping, UX", "desc": "Shape product experiences for consumer apps from first sketch to shipped UI.", "link": "", "snippet": "Shape product experiences for consumer apps from first sketch to shipped UI.", "source": "local", "logo": ""},
     {"id": 7, "title": "Software Engineer, New Grad", "company": "Bluepeak Systems", "location": "Columbus, OH", "salary": "98,000", "type": "Full-time", "tags": "Java, Spring, Distributed systems", "desc": "Join our platform team building reliable services for logistics customers.", "link": "", "snippet": "Join our platform team building reliable services for logistics customers.", "source": "local", "logo": ""},
     {"id": 8, "title": "QA Automation Engineer", "company": "Riverbend Software", "location": "Remote", "salary": "89,000", "type": "Part-time", "tags": "Playwright, Python, CI/CD", "desc": "Grow our end-to-end test suite so releases stay fast and dependable.", "link": "", "snippet": "Grow our end-to-end test suite so releases stay fast and dependable.", "source": "local", "logo": ""},
+    # Made-up listing for the class demo. It applies through the practice form in assets/.
+    {"id": 9, "title": "Data Engineering Intern", "company": "Bluewater Analytics", "location": "Ann Arbor, MI", "salary": "58,000", "type": "Internship", "tags": "Python, SQL, Airflow, Spark, AWS", "desc": "### About the role\nYou will build the ETL pipelines behind our data warehouse.\n\n### What you'll do\n- Build ETL pipelines in Python and SQL for PostgreSQL and Snowflake\n- Schedule and monitor pipelines with Apache Airflow\n- Write data quality checks that catch duplicates and missing values before reports run\n- Process large datasets with Spark and pandas\n- Package services with Docker and deploy them on AWS\n- Help the team turn messy CSV exports into clean, documented tables\n\n### What we're looking for\n- Pursuing a degree in Computer Science, Data Science, or a related field\n- Strong Python and SQL\n- Experience with relational databases such as PostgreSQL\n- Familiarity with Airflow, dbt, or Spark is a plus\n- Clear communication and comfort working with a team", "link": "/static/demo-application.html", "snippet": "Build the ETL pipelines behind our data warehouse.", "source": "local", "logo": ""}
 ];
 
 def:pub list_jobs -> list[dict[str, str | int]] {
@@ -202,7 +206,41 @@ def build_themuse_url(domain: str | None = None, endpoint: str | None = None) ->
     clean_domain = clean_domain.strip("/");
     return f"https://{clean_domain}/api/public/jobs";
 }
+"""Turn an HTML job description into plain, readable text.
 
+Some job boards (Himalayas, The Muse) send descriptions as HTML. The page
+shows descriptions as plain text, so we convert here: headings and
+paragraphs become line breaks, list items become bullets, all other tags
+are removed, and codes like &amp; become the real character.
+Plain text (no tags) comes back unchanged.
+"""
+def:pub html_to_text(raw: str | None) -> str {
+    text = str(raw or "");
+    if not text.strip() {
+        return "";
+    }
+    # Scripts and styles are code, not words: drop them with their contents.
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1\s*>", "", text);
+    # <br> is a line break.
+    text = re.sub(r"(?i)<br\s*/?>", "\n", text);
+    # A heading starts a new paragraph.
+    text = re.sub(r"(?i)<h[1-6][^>]*>", "\n\n", text);
+    # Each list item starts on its own line with a bullet.
+    text = re.sub(r"(?i)<li[^>]*>", "\n• ", text);
+    # The end of a paragraph, block, heading or list is a line break.
+    text = re.sub(r"(?i)</(p|div|h[1-6]|ul|ol)\s*>", "\n", text);
+    # Remove every tag that's left (<strong>, <a href=...>, <em>, ...).
+    text = re.sub(r"<[^>]+>", "", text);
+    # &amp; -> &, &#39; -> ', and a non-breaking space -> a normal space.
+    text = unescape(text).replace(" ", " ");
+    # Tidy up: squash extra spaces on each line, allow at most one blank
+    # line in a row, and no blank line between bullets.
+    lines = [" ".join(line.split()) for line in text.split("\n")];
+    text = "\n".join(lines);
+    text = re.sub(r"\n{3,}", "\n\n", text);
+    text = re.sub(r"\n\n• ", "\n• ", text);
+    return text.strip();
+}
 # --- Normalizers ---
 
 def normalize_jooble_job(raw: dict[str, any]) -> dict[str, any] {
@@ -215,8 +253,8 @@ def normalize_jooble_job(raw: dict[str, any]) -> dict[str, any] {
         "salary": str(raw.get("salary", "")) if raw.get("salary") is not None else "",
         "type": raw.get("type", "") or "",
         "link": raw.get("link", "") or "",
-        "snippet": raw.get("snippet", "") or "",
-        "desc": raw.get("snippet", "") or "",
+        "snippet": html_to_text(raw.get("snippet", "")),
+        "desc": html_to_text(raw.get("snippet", "")),
         "source": "jooble",
         "tags": str(raw.get("tags", "")) if raw.get("tags") is not None else "",
         "logo": logo
@@ -322,8 +360,10 @@ def normalize_himalayas_job(job: dict[str, any]) -> dict[str, any] {
         }
     }
     cats = job.get("categories", []);
-    tags_str = ", ".join(cats) if isinstance(cats, list) else str(cats or "");
-    desc = job.get("description") or job.get("excerpt") or "";
+    # Himalayas writes categories like "Data-Science-Teacher"; show "Data Science Teacher".
+    cat_list = [str(c).replace("-", " ") for c in cats] if isinstance(cats, list) else [str(cats or "")];
+    tags_str = ", ".join([c for c in cat_list if c.strip()]);
+    desc = html_to_text(job.get("description") or job.get("excerpt") or "");
     logo = str(job.get("companyLogo") or job.get("company_logo") or job.get("logo") or "");
     return {
         "id": str(job.get("guid", "")),
@@ -333,7 +373,7 @@ def normalize_himalayas_job(job: dict[str, any]) -> dict[str, any] {
         "salary": salary_str,
         "type": job.get("employmentType", "") or "",
         "link": job.get("applicationLink", "") or "",
-        "snippet": job.get("excerpt", "") or "",
+        "snippet": html_to_text(job.get("excerpt", "")),
         "desc": desc,
         "source": "himalayas",
         "tags": tags_str,
@@ -376,7 +416,8 @@ def normalize_themuse_job(job: dict[str, any]) -> dict[str, any] {
     }
     tags_str = ", ".join(cat_names);
     contents = job.get("contents", "") or "";
-    snippet = re.sub(r"<[^>]+>", " ", contents).strip() if contents else "";
+    clean_contents = html_to_text(contents);
+    snippet = clean_contents;
     if len(snippet) > 250 {
         snippet = snippet[:247] + "...";
     }
@@ -396,7 +437,7 @@ def normalize_themuse_job(job: dict[str, any]) -> dict[str, any] {
         "type": job.get("type", "") or "",
         "link": link,
         "snippet": snippet,
-        "desc": contents,
+        "desc": clean_contents,
         "source": "themuse",
         "tags": tags_str,
         "logo": logo
@@ -701,7 +742,7 @@ def fetch(
                         break;
                     }
                 } else {
-                    if job_loc and (loc_target in job_loc or job_loc in loc_target) {
+                     if location_matches(loc_target, job_loc) {
                         matched_any_loc = True;
                         break;
                     }
@@ -925,7 +966,7 @@ def:pub search_jobs(
                         break;
                     }
                 } else {
-                    if t in j_loc_str or j_loc_str in t {
+                    if location_matches(t, j_loc_str) {
                         matched_loc = True;
                         break;
                     }

@@ -27,26 +27,30 @@ def main() -> int:
         try:
             page.goto(f"{BASE}/login", wait_until="domcontentloaded", timeout=45000)
             try:
-                page.wait_for_url("**/jobs", timeout=30000)
+                page.wait_for_url("**/find-jobs", timeout=30000)
             except PlaywrightTimeoutError:
                 login_button = page.get_by_role("button", name="Continue as Test User")
                 if login_button.count():
                     login_button.click()
-                    page.wait_for_url("**/jobs", timeout=25000)
+                    page.wait_for_url("**/find-jobs", timeout=25000)
                 else:
-                    raise AssertionError("Test profile did not authenticate or redirect to /jobs")
+                    raise AssertionError("Test profile did not authenticate or redirect to /find-jobs")
 
             page.get_by_text("Based on your preferences").wait_for(timeout=60000)
             role = page.get_by_text("Data Analyst", exact=True).first
             role.wait_for(timeout=35000)
             role.click()
 
-            page.get_by_role("button", name="Apply now (demo)").click()
+            # Local listings have no employer link, so there's no Apply now, only tailoring.
+            assert page.get_by_role("link", name="Apply now").count() == 0
+            page.get_by_role("button", name="Tailor my resume", exact=True).click()
             page.wait_for_url("**/tools?job=3", timeout=20000)
             page.get_by_role("heading", name="Application tools").wait_for(timeout=20000)
 
             autofill = page.locator("section[aria-labelledby='autofill-heading']")
             autofill.get_by_role("heading", name="1. Your autofill profile").wait_for(timeout=20000)
+            # The autofill profile starts collapsed; open it.
+            autofill.get_by_role("button", name="1. Your autofill profile").click()
             autofill.get_by_text("Contact details").wait_for(timeout=20000)
             email_row = autofill.locator("dl > div", has_text="Email").first
             assert "@" in email_row.locator("dd").inner_text(), "Autofill profile shows no email"
@@ -88,8 +92,13 @@ def main() -> int:
             print("PASS: Tracker and insights")
 
             page.get_by_role("tab", name="Table").click()
+            page.get_by_role("button", name="Edit", exact=True).click()
+            page.get_by_label("Select Engineer at " + company + " to edit").check()
+            page.get_by_role("button", name="Edit selected (1)").click()
+            page.once("dialog", lambda dialog: dialog.accept())
             page.get_by_role("button", name="Remove Engineer at " + company).click()
-            status.wait_for(state="detached", timeout=10000)
+            page.get_by_label("Status for " + company, exact=True).wait_for(state="detached", timeout=10000)
+            print("PASS: Tracker removes an application")
 
             page.goto(f"{BASE}/me", wait_until="domcontentloaded", timeout=30000)
             page.get_by_text("Personal Information").wait_for(timeout=25000)

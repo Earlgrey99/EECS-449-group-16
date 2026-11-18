@@ -133,7 +133,10 @@ def extract_job_skills(job: dict[str, any]) -> list[str] {
     skills: list[str] = [];
     for tag in _field(job, "tags").split(",") {
         skill = canonical_skill(tag);
-        if skill and skill not in skills {
+        # Some job boards put job-title keywords in tags (e.g. "Data Science
+        # Teacher"). Only a tag that is a skill we know counts as required,
+        # otherwise it shows up as a "missing skill" no resume could have.
+        if skill in KNOWN_SKILLS and skill not in skills {
             skills.append(skill);
         }
     }

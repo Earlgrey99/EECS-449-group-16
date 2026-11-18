@@ -18,6 +18,7 @@ import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from ..services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from ..services.compatibility { get_resume_match_scores }
+import from ..services.job_ranking { rank_jobs_for_me }
 import from ..services.locations { search_cities }
 import from ..services.tracker { add_tracker_application }
 import from ..lib.utils { format_salary, format_desc }
@@ -55,6 +56,7 @@ def:pub JobCard(
     logo: str = "",
     source: str = "",
     match_score: int = -1,
+    reasons: list[str] = [],
     is_example: bool = False
 ) -> JsxElement {
     sal_display = format_salary(salary);
@@ -75,6 +77,7 @@ def:pub JobCard(
             <p className="text-sm text-muted-foreground">{location}</p>
             {bool(sal_display) and <p className="text-sm font-medium tabular-nums">{sal_display}</p>}
             {match_score >= 0 and <Badge variant={("default" if match_score >= 75 else ("secondary" if match_score >= 50 else "outline"))} className="w-fit tabular-nums">{str(match_score) + "% match"}</Badge>}
+            {len(reasons) > 0 and <p className="text-xs text-primary">{"Fits you: " + " · ".join(reasons[:3])}</p>}
             {is_example and <Badge variant="outline" className="w-fit text-xs font-medium border-dashed">Example listing</Badge>}
             <div className="mt-1 flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
@@ -237,11 +240,27 @@ def:pub JobSearchFeed -> JsxElement {
             data_origin = "examples";
         }
         tailored_origin = data_origin;
+        init_jobs = await rank_for_me(init_jobs);
         jobs = init_jobs;
         tailored_jobs = init_jobs;
         loading = False;
 
         await load_scores(init_jobs);
+    }
+# Ask the server to put the jobs that best fit the profile first.
+    # If that fails for any reason, the jobs stay in their old order.
+    async def rank_for_me(to_rank: list[dict[str, any]]) -> list[dict[str, any]] {
+        if len(to_rank) == 0 {
+            return to_rank;
+        }
+        ranked: any = None;
+        try {
+            ranked = await rank_jobs_for_me(token=session_token(), jobs=to_rank);
+        } except Exception {}
+        if ranked and ranked.get("ok") and ranked.get("jobs") {
+            return ranked.get("jobs");
+        }
+        return to_rank;
     }
 
     def session_token -> str {
@@ -396,7 +415,7 @@ def:pub JobSearchFeed -> JsxElement {
         } except Exception {}
 
         if res and res.get("ok") and isinstance(res.get("jobs"), list) {
-            jobs = res.get("jobs");
+            jobs = await rank_for_me(res.get("jobs"));
         } else {
             jobs = [];
         }
@@ -553,10 +572,20 @@ def:pub JobSearchFeed -> JsxElement {
         }
     }
 
-    def apply_to(job: any) {
+    # The employer's application page, or "" when the listing has none.
+    # Links on this site (like the class demo form) start with "/".
+    def application_link(job: any) -> str {
+        link = str(job.get("link") or "").strip() if job else "";
+        if link.startswith("https://") or link.startswith("http://") or link.startswith("/") {
+            return link;
+        }
+        return "";
+    }
+
+    def tailor_for(job: any) {
         try {
             localStorage.setItem("jaccit_selected_job", JSON.stringify(job));
-            nav("/tools");
+            nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))));
         } except Exception {
             track_message = "Could not open this job in the application tools.";
         }
@@ -890,6 +919,7 @@ def:pub JobSearchFeed -> JsxElement {
                                 logo={str(j.get("logo") or j.get("companyLogo") or j.get("company_logo") or "")}
                                 source={str(j.get("source") or j.get("site") or "")}
                                 match_score={card_score(j)}
+                                reasons={j.get("pref_reasons") or []}
                                 is_example={bool(j.get("example"))}
                                 active={sel is not None and str(sel.get("id", "")) == str(j.get("id", ""))}
                                 saved={is_saved(j)}
@@ -929,6 +959,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match.get("matched", "")) or "none")}</p>
                                     <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match.get("missing", "")) or "none")}</p>
                                 </div>}
+
                                 <div className="text-sm leading-relaxed text-foreground/90 space-y-2 [&_h1]:my-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:my-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_a]:text-primary [&_a]:underline" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
                                 {is_jooble_job(sel) and <div className="rounded-lg border border-border/80 bg-muted/40 p-3 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                     <span className="text-xs text-muted-foreground">Listing from Jooble includes a summary snippet only.</span>
@@ -947,17 +978,15 @@ def:pub JobSearchFeed -> JsxElement {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
                                     }}
                                 </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now (demo)</Button>
-                                    <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
-                                    {bool(track_message) and <p role="alert" className="text-sm text-destructive">{track_message}</p>}
-                                </div>
                             </CardContent>
                             <CardFooter className="shrink-0 flex flex-wrap items-center gap-3">
-                                <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
+                                {bool(application_link(sel)) and <Button asChild className="shadow-sm">
+                                    <a href={application_link(sel)} target="_blank" rel="noopener noreferrer">Apply now <span aria-hidden="true">&rarr;</span></a>
+                                </Button>}
+                                <Button variant={("outline" if application_link(sel) else "default")} onClick={lambda { tailor_for(sel); }}>Tailor my resume</Button>
                                 <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                {is_jooble_job(sel) and <a
+                                <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
+                                {(is_jooble_job(sel) and get_jooble_link(sel) != application_link(sel)) and <a
                                     href={get_jooble_link(sel)}
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -966,6 +995,8 @@ def:pub JobSearchFeed -> JsxElement {
                                     <span>Full description</span>
                                     <span aria-hidden="true">&rarr;</span>
                                 </a>}
+                                {(not application_link(sel)) and <p className="w-full text-xs text-muted-foreground">This listing has no application link. You can still tailor your resume for it.</p>}
+                                {bool(track_message) and <p role="alert" className="w-full text-sm text-destructive">{track_message}</p>}
                             </CardFooter>
                         </Card>}
                     </section>

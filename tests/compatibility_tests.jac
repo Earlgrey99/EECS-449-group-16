@@ -259,7 +259,7 @@ test "get_resume_match_scores uses the resume saved in the profile" {
     res = _match_scores_for([dict(j) for j in list_jobs()], "jordan@example.com", conn=conn);
     assert res["ok"];
     assert res["has_resume"];
-    assert len(res["scores"]) == 8;
+    assert len(res["scores"]) == 9;
     backend = score_for(res["scores"], "2");
     assert backend["score"] == 95, backend;
     assert backend["label"] == "Strong match";

@@ -711,7 +711,7 @@ def:pub UserProfilePage -> JsxElement {
                     step = 2;
                     message = str(prefs_saved.get("error") if prefs_saved else "Could not save your job preferences.");
                 } else {
-                    nav("/jobs");
+                    nav("/find-jobs");
                 }
 
 
@@ -1243,7 +1243,7 @@ def:pub UserProfilePage -> JsxElement {
                             {step == 1 and <Button
                                 type="button"
                                 variant="outline"
-                                onClick={lambda { nav("/jobs"); }}
+                                onClick={lambda { nav("/find-jobs"); }}
                                 disabled={submitting or reading_file}
                             >
                                 Skip for now

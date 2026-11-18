@@ -18,8 +18,8 @@ jac run --dev main.jac
 ```
 
 Visit http://localhost:8000, sign in using your test account, and open
-**Applicant tools** in the top navigation or use **Apply now** in the sample
-job feed. The page routes are `/tools` and `/tracker`.
+**Applicant tools** in the top navigation or use **Tailor my resume** on a job in
+the feed. **Apply now** opens the employer's application in a new tab. The page routes are `/tools` and `/tracker`.
 
 ## Application tracker
 
@@ -87,5 +87,5 @@ environment variables to use a shared database instead.
 - The browser sample form never submits a job application.
 - Resume text is processed by the local Jac backend, not stored in the app.
 - Run `jac check main.jac`, Jac tests, Python tests, and manually verify routes
-  `/`, `/login`, `/jobs`, `/tools` before requesting merge.
+  `/`, `/login`, `/find-jobs`, `/tools` before requesting merge.
 - Browser compatibility with external job application forms is not guaranteed.

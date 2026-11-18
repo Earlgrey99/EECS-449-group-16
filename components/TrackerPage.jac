@@ -8,7 +8,8 @@ import from ..services.tracker {
     get_tracker_status_options,
     save_tracker_status_options,
     set_tracker_status,
-    edit_tracker_application
+    edit_tracker_application,
+    remove_tracker_application
 }
 
 def:pub TrackerRow(
@@ -539,6 +540,28 @@ def:pub TrackerPage() -> JsxElement {
         edit_error = "";
     }
 
+    async def remove_application(app_id: int, label: str) {
+        if not window.confirm("Remove " + label + " from your tracker? This can't be undone.") {
+            return;
+        }
+        edit_error = "";
+        try {
+            res: any = await remove_tracker_application(token=session_token(), app_id=app_id);
+            if res and res.get("ok") {
+                applications = [app for app in applications if int(app["id"]) != app_id];
+                edit_drafts = [draft for draft in edit_drafts if int(draft["id"]) != app_id];
+                selected_application_ids = [selected_id for selected_id in selected_application_ids if selected_id != app_id];
+                if not applications {
+                    edit_mode = False;
+                }
+            } else {
+                edit_error = str(res.get("error") if res else "Could not remove the application.");
+            }
+        } except Exception {
+            edit_error = "Could not remove the application.";
+        }
+    }
+
     async def save_edit() {
         if reading_pdf {
             edit_error = "Wait for the selected PDF to finish reading.";
@@ -741,7 +764,15 @@ def:pub TrackerPage() -> JsxElement {
                     {for draft in edit_drafts {
                         draft_id = int(draft["id"]);
                         <article key={str(draft_id)} className="rounded-xl border p-4">
-                            <h3 className="mb-3 font-medium">{str(draft["role"]) + " at " + str(draft["company"])}</h3>
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <h3 className="font-medium">{str(draft["role"]) + " at " + str(draft["company"])}</h3>
+                                <Button
+                                    variant="outline"
+                                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                                    aria-label={"Remove " + str(draft["role"]) + " at " + str(draft["company"])}
+                                    onClick={lambda { remove_application(draft_id, str(draft["role"]) + " at " + str(draft["company"])); }}
+                                >Remove application</Button>
+                            </div>
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 <input value={str(draft["role"])} onChange={edit_field_handler(draft_id, "role")} placeholder="Job title" aria-label={"Edit job title for " + str(draft["company"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
                                 <input value={str(draft["company"])} onChange={edit_field_handler(draft_id, "company")} placeholder="Company" aria-label={"Edit company for " + str(draft["role"])} className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
@@ -1033,8 +1064,8 @@ def:pub TrackerPage() -> JsxElement {
                         </div>
                         <div className="overflow-x-auto">
                             <svg viewBox="0 0 540 260" className="min-w-[480px] w-full" role="img" aria-label="Sankey diagram from submitted applications to their current status">
-                                <text x="26" y="16" className="fill-muted-foreground" font-size="11">SUBMITTED</text>
-                                <text x="436" y="16" className="fill-muted-foreground" font-size="11">CURRENT STATUS</text>
+                                <text x="26" y="16" className="fill-muted-foreground" fontSize="11">SUBMITTED</text>
+                                <text x="436" y="16" className="fill-muted-foreground" fontSize="11">CURRENT STATUS</text>
                                 {for option in status_options {
                                     status = option["name"];
                                     status_count = count_status(status);
@@ -1049,16 +1080,16 @@ def:pub TrackerPage() -> JsxElement {
                                             d={"M 84 " + str(ribbon_start) + " C 185 " + str(ribbon_start) + ", 310 " + str(ribbon_end) + ", 420 " + str(ribbon_end)}
                                             fill="none"
                                             stroke={color}
-                                            stroke-width={max(flow_width, 2.0)}
-                                            stroke-opacity="0.48"
+                                            strokeWidth={max(flow_width, 2.0)}
+                                            strokeOpacity="0.48"
                                         />
                                         <rect key={status + "-node"} x="420" y={destination_y} width="12" height={flow_width} rx="4" fill={color} />
-                                        <text key={status + "-label"} x="442" y={ribbon_end + 4} className="fill-foreground" font-size="12">{status + " · " + str(status_count)}</text>
+                                        <text key={status + "-label"} x="442" y={ribbon_end + 4} className="fill-foreground" fontSize="12">{status + " · " + str(status_count)}</text>
                                     }
                                     flow_offset = flow_offset + flow_width;
                                 }}
                                 {total > 0 and <rect x="26" y="30" width="58" height="200" rx="8" fill="#46695d" />}
-                                {total == 0 and <text x="28" y="112" className="fill-muted-foreground" font-size="12">Add applications to see flows</text>}
+                                {total == 0 and <text x="28" y="112" className="fill-muted-foreground" fontSize="12">Add applications to see flows</text>}
                             </svg>
                         </div>
                     </div>}

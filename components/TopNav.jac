@@ -1,6 +1,6 @@
 import from "@jac/runtime" { Link, useLocation, useNavigate, jacIsLoggedIn, jacLogout }
 import from "@hugeicons/react" { HugeiconsIcon }
-import from "@hugeicons/core-free-icons" { Logout01Icon, UserAccountIcon, ArrowDown01Icon, Sun03Icon, Moon02Icon }
+import from "@hugeicons/core-free-icons" { Logout01Icon, UserAccountIcon, ArrowDown01Icon, Sun03Icon, Moon02Icon, Menu01Icon, Cancel01Icon }
 import from .ui.button { Button }
 import from .BrandMark { BrandMark }
 import from .CareerAssistant { CareerAssistant }
@@ -11,6 +11,7 @@ def:pub TopNav -> JsxElement {
     path = loc.pathname;
     has logged_in: bool = False;
     has dropdown_open: bool = False;
+    has menu_open: bool = False;
     has did_init_nav: bool = False;
     has dark_mode: bool = False;
 
@@ -48,6 +49,11 @@ def:pub TopNav -> JsxElement {
         return base + (" bg-primary/10 text-primary" if path == to or (to != "/" and path.startswith(to)) else " text-muted-foreground hover:text-foreground");
     }
 
+    def go(to: str) {
+        menu_open = False;
+        nav(to);
+    }
+
     def handle_navigate_profile {
         dropdown_open = False;
         nav("/me");
@@ -59,7 +65,7 @@ def:pub TopNav -> JsxElement {
             <Link to="/"><BrandMark name="Launchpad" /></Link>
             <div className="hidden flex-1 items-center justify-end gap-2 md:flex">
                 <Link to="/"><span className={link_class("/")}>Home</span></Link>
-                <Link to="/jobs"><span className={link_class("/jobs")}>Jobs</span></Link>
+                <Link to="/find-jobs"><span className={link_class("/find-jobs")}>Jobs</span></Link>
                 <Link to="/tracker"><span className={link_class("/tracker")}>Tracker</span></Link>
                 <Link to="/tools"><span className={link_class("/tools")}>Applicant tools</span></Link>
                 {logged_in and <div className="relative flex items-center gap-2 pl-3">
@@ -97,8 +103,18 @@ def:pub TopNav -> JsxElement {
                     </Link>
                 </div>}
             </div>
-            <button className="flex size-9 items-center justify-center rounded-md text-foreground md:hidden" aria-label="Account" onClick={lambda { if logged_in { nav("/me"); } else { nav("/login"); } }}>
+            <button className="flex size-9 items-center justify-center rounded-md text-foreground md:hidden" aria-label="Account" onClick={lambda { if logged_in { go("/me"); } else { go("/login"); } }}>
                 <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} className="size-5" />
+            </button>
+            <button
+                type="button"
+                className="flex size-9 items-center justify-center rounded-md text-foreground md:hidden"
+                aria-label={"Close menu" if menu_open else "Open menu"}
+                aria-expanded={menu_open}
+                aria-controls="mobile-menu"
+                onClick={lambda { menu_open = not menu_open; }}
+            >
+                <HugeiconsIcon icon={Cancel01Icon if menu_open else Menu01Icon} strokeWidth={2} className="size-5" />
             </button>
             <button
                 type="button"
@@ -111,6 +127,15 @@ def:pub TopNav -> JsxElement {
                 <HugeiconsIcon icon={Sun03Icon if dark_mode else Moon02Icon} strokeWidth={2} className="size-5" />
             </button>
         </div>
+        {menu_open and <div id="mobile-menu" className="border-t bg-background px-4 pb-4 pt-2 md:hidden">
+            <div className="flex flex-col gap-1">
+                {for item in ([["/", "Home"], ["/find-jobs", "Jobs"], ["/tracker", "Tracker"], ["/tools", "Applicant tools"]] + ([["/explore", "Explore"], ["/me", "Profile"]] if logged_in else [])) {
+                    <button key={item[0]} type="button" onClick={lambda { go(item[0]); }} className={link_class(item[0]) + " w-full py-2.5 text-left"}>{item[1]}</button>
+                }}
+                {logged_in and <button type="button" onClick={lambda { menu_open = False; handle_signout(); }} className="w-full rounded-md px-3 py-2.5 text-left text-sm font-medium text-destructive hover:bg-destructive/10">Sign out</button>}
+                {(not logged_in) and <button type="button" onClick={lambda { go("/login"); }} className="w-full rounded-md px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-primary/10">Sign in</button>}
+            </div>
+        </div>}
     </nav>
     {logged_in and path != "/explore" and <CareerAssistant compact={True} />}
     </>;

@@ -121,7 +121,8 @@ def:pub ApplicantTools() -> JsxElement {
         application_pay = str(job.get("salary") or job.get("salary_text") or "");
         application_description = plain_text(desc);
         raw_link = str(job.get("link") or job.get("job_url") or job.get("application_url") or "").strip();
-        employer_link = raw_link if (raw_link.startswith("http://") or raw_link.startswith("https://")) else "";
+        # A link starting with "/" is on this site, like the class demo's practice form.
+        employer_link = raw_link if (raw_link.startswith("http://") or raw_link.startswith("https://") or raw_link.startswith("/")) else "";
         employer_source = str(job.get("source") or job.get("site") or "").strip();
         job_is_example = bool(job.get("example")) or (not employer_link and (not employer_source or employer_source == "local"));
         use_job(title, desc, tags);
@@ -147,6 +148,9 @@ def:pub ApplicantTools() -> JsxElement {
                 job_notice = "We couldn't load that job. Paste its description below.";
             }
         }
+        if has_selected_job {
+            return;
+        }
         passed: any = location.state.get("job") if location.state else None;
         if passed {
             use_application_job(passed);
@@ -161,7 +165,8 @@ def:pub ApplicantTools() -> JsxElement {
                 }
             }
         }
-        if not passed and not has_selected_job {
+        # Only warn when a job was asked for; opening the page on its own is normal.
+        if job_id {
             job_notice = "We couldn't load that job. Paste its description below.";
         }
         if not job_from_feed {
@@ -414,13 +419,14 @@ def:pub ApplicantTools() -> JsxElement {
                 </div>
 
                 {bool(job_notice) and <p role="status" className="mb-4 text-sm text-amber-700">{job_notice}</p>}
-                {(not job_is_example and bool(employer_link)) and <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
-                    <span className="text-foreground">When your materials are ready, submit the application on the employer's site{bool(employer_source) and <span className="text-muted-foreground">{" (listing via " + employer_source + ")"}</span>}.</span>
+                {bool(employer_link) and <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+                    {(not job_is_example) and <span className="text-foreground">When your materials are ready, submit the application on the employer's site{bool(employer_source) and <span className="text-muted-foreground">{" (listing via " + employer_source + ")"}</span>}.</span>}
+                    {job_is_example and <span className="text-foreground">This is an example listing. Its application is a practice form, so nothing you fill in is sent.</span>}
                     <a href={employer_link} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-primary px-4 font-medium text-primary-foreground hover:bg-primary/90">
                         Open employer application <span aria-hidden="true">&rarr;</span>
                     </a>
                 </div>}
-                {job_is_example and <p role="note" className="mb-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
+                {(job_is_example and not employer_link) and <p role="note" className="mb-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
                     This is an example listing, so there is no employer application behind it. The tools below still show how your resume and answers would be prepared.
                 </p>}
                 <div className="grid gap-6 md:grid-cols-2">

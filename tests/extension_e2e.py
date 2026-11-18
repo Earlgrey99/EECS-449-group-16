@@ -179,6 +179,9 @@ def main() -> int:
 
                 # Connect through a signed-in Launchpad tab.
                 launchpad = context.new_page()
+                # The test profile signs in its built-in user on /login; turn that off
+                # before the page runs, so it can't replace this account's token.
+                launchpad.add_init_script("localStorage.setItem('dev_logged_out', 'true');")
                 launchpad.goto(f"{BASE}/login", wait_until="domcontentloaded")
                 launchpad.evaluate(
                     "token => { localStorage.setItem('dev_logged_out', 'true'); localStorage.setItem('jac_token', token); }",
@@ -280,7 +283,7 @@ def main() -> int:
                 check(
                     "the job reaches the tracker with its link",
                     len(tracked) == 1 and tracked[0]["role"] == "Software Engineer" and tracked[0]["company"] == "Fixture Co"
-                    and tracked[0]["job_url"].endswith("/tricky_form.html") and tracked[0]["status"] == "Applied",
+                    and tracked[0]["job_url"].endswith("/tricky_form.html") and tracked[0]["status"] == "Saved",
                     tracked,
                 )
 

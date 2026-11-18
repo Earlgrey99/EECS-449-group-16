@@ -232,6 +232,9 @@ def _public_user(user: dict[str, any] | None) -> dict[str, any] | None {
     clean.pop("password_hash", None);
     clean.pop("application_answers", None);
     clean.pop("tailored_resume", None);
+    if is_placeholder_oauth_email(str(clean.get("email") or "")) {
+        clean["email"] = "";
+    }
     return clean;
 }
 
