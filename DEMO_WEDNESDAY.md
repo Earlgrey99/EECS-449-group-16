@@ -38,7 +38,7 @@ Check these routes before the talk:
 
 - `http://localhost:8000/`: landing page
 - `http://localhost:8000/login`: sign-in (the test profile signs in automatically)
-- `http://localhost:8000/jobs`: job feed with match scores
+- `http://localhost:8000/find-jobs`: job feed with match scores
 - `http://localhost:8000/me`: profile, contact details, and application answers
 - `http://localhost:8000/tools`: autofill profile and tailored resume PDF
 - `http://localhost:8000/tracker`: application tracker

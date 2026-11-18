@@ -179,6 +179,9 @@ def main() -> int:
 
                 # Connect through a signed-in Launchpad tab.
                 launchpad = context.new_page()
+                # The test profile signs in its built-in user on /login; turn that off
+                # before the page runs, so it can't replace this account's token.
+                launchpad.add_init_script("localStorage.setItem('dev_logged_out', 'true');")
                 launchpad.goto(f"{BASE}/login", wait_until="domcontentloaded")
                 launchpad.evaluate(
                     "token => { localStorage.setItem('dev_logged_out', 'true'); localStorage.setItem('jac_token', token); }",

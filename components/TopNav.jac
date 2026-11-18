@@ -65,7 +65,7 @@ def:pub TopNav -> JsxElement {
             <Link to="/"><BrandMark name="Launchpad" /></Link>
             <div className="hidden flex-1 items-center justify-end gap-2 md:flex">
                 <Link to="/"><span className={link_class("/")}>Home</span></Link>
-                <Link to="/jobs"><span className={link_class("/jobs")}>Jobs</span></Link>
+                <Link to="/find-jobs"><span className={link_class("/find-jobs")}>Jobs</span></Link>
                 <Link to="/tracker"><span className={link_class("/tracker")}>Tracker</span></Link>
                 <Link to="/tools"><span className={link_class("/tools")}>Applicant tools</span></Link>
                 {logged_in and <Link to="/explore"><span className={link_class("/explore")}>Explore</span></Link>}
@@ -130,7 +130,7 @@ def:pub TopNav -> JsxElement {
         </div>
         {menu_open and <div id="mobile-menu" className="border-t bg-background px-4 pb-4 pt-2 md:hidden">
             <div className="flex flex-col gap-1">
-                {for item in ([["/", "Home"], ["/jobs", "Jobs"], ["/tracker", "Tracker"], ["/tools", "Applicant tools"]] + ([["/explore", "Explore"], ["/me", "Profile"]] if logged_in else [])) {
+                {for item in ([["/", "Home"], ["/find-jobs", "Jobs"], ["/tracker", "Tracker"], ["/tools", "Applicant tools"]] + ([["/explore", "Explore"], ["/me", "Profile"]] if logged_in else [])) {
                     <button key={item[0]} type="button" onClick={lambda { go(item[0]); }} className={link_class(item[0]) + " w-full py-2.5 text-left"}>{item[1]}</button>
                 }}
                 {logged_in and <button type="button" onClick={lambda { menu_open = False; handle_signout(); }} className="w-full rounded-md px-3 py-2.5 text-left text-sm font-medium text-destructive hover:bg-destructive/10">Sign out</button>}

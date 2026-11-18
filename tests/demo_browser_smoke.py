@@ -27,14 +27,14 @@ def main() -> int:
         try:
             page.goto(f"{BASE}/login", wait_until="domcontentloaded", timeout=45000)
             try:
-                page.wait_for_url("**/jobs", timeout=30000)
+                page.wait_for_url("**/find-jobs", timeout=30000)
             except PlaywrightTimeoutError:
                 login_button = page.get_by_role("button", name="Continue as Test User")
                 if login_button.count():
                     login_button.click()
-                    page.wait_for_url("**/jobs", timeout=25000)
+                    page.wait_for_url("**/find-jobs", timeout=25000)
                 else:
-                    raise AssertionError("Test profile did not authenticate or redirect to /jobs")
+                    raise AssertionError("Test profile did not authenticate or redirect to /find-jobs")
 
             page.get_by_text("Based on your preferences").wait_for(timeout=60000)
             role = page.get_by_text("Data Analyst", exact=True).first
