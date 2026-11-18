@@ -706,6 +706,20 @@ def save_user_profile(
     return None;
 }
 
+def save_job_preferences_row(user_id: int, preferences_json: str, conn: any = None) -> dict[str, any] | None {
+    db_conn = conn if conn is not None else get_db_connection();
+    cur = db_conn.cursor();
+    cur.execute(
+        "UPDATE users SET job_preferences = ? WHERE id = ?",
+        (preferences_json, user_id)
+    );
+    db_conn.commit();
+    if cur.rowcount == 0 {
+        return None;
+    }
+    return get_user_by_id(user_id, conn=db_conn);
+}
+
 def get_user_profile(user_id: int, conn: any = None) -> dict[str, any] | None {
     user = get_user_by_id(user_id, conn=conn);
     if user is None {
