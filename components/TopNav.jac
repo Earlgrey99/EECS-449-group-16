@@ -1,8 +1,9 @@
 import from "@jac/runtime" { Link, useLocation, useNavigate, jacIsLoggedIn, jacLogout }
 import from "@hugeicons/react" { HugeiconsIcon }
-import from "@hugeicons/core-free-icons" { Menu01Icon, Logout01Icon, UserAccountIcon, ArrowDown01Icon }
+import from "@hugeicons/core-free-icons" { Logout01Icon, UserAccountIcon, ArrowDown01Icon, Sun03Icon, Moon02Icon }
 import from .ui.button { Button }
 import from .BrandMark { BrandMark }
+import from .CareerAssistant { CareerAssistant }
 
 def:pub TopNav -> JsxElement {
     loc = useLocation();
@@ -11,6 +12,7 @@ def:pub TopNav -> JsxElement {
     has logged_in: bool = False;
     has dropdown_open: bool = False;
     has did_init_nav: bool = False;
+    has dark_mode: bool = False;
 
     async can with entry {
         if did_init_nav {
@@ -18,6 +20,15 @@ def:pub TopNav -> JsxElement {
         }
         did_init_nav = True;
         logged_in = jacIsLoggedIn();
+        dark_mode = localStorage.getItem("launchpad-theme") == "dark";
+        document.documentElement.classList.toggle("dark", dark_mode);
+    }
+
+    def toggle_theme {
+        next_dark_mode = not dark_mode;
+        dark_mode = next_dark_mode;
+        document.documentElement.classList.toggle("dark", next_dark_mode);
+        localStorage.setItem("launchpad-theme", "dark" if next_dark_mode else "light");
     }
 
     def handle_signout {
@@ -42,7 +53,8 @@ def:pub TopNav -> JsxElement {
         nav("/me");
     }
 
-    return <nav className="sticky top-0 z-30 border-b bg-background">
+    return <>
+    <nav className="sticky top-0 z-30 border-b bg-background">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 pl-6 pr-6">
             <Link to="/"><BrandMark name="Launchpad" /></Link>
             <div className="hidden flex-1 items-center justify-end gap-2 md:flex">
@@ -85,12 +97,21 @@ def:pub TopNav -> JsxElement {
                     </Link>
                 </div>}
             </div>
-            <button className="flex size-9 items-center justify-center rounded-md text-foreground md:hidden" aria-label="Menu" onClick={lambda { if logged_in { nav("/me"); } else { nav("/login"); } }}>
-                <HugeiconsIcon icon={Menu01Icon} strokeWidth={2} className="size-5" />
+            <button className="flex size-9 items-center justify-center rounded-md text-foreground md:hidden" aria-label="Account" onClick={lambda { if logged_in { nav("/me"); } else { nav("/login"); } }}>
+                <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} className="size-5" />
             </button>
-            <button className="hidden md:flex size-9 items-center justify-center rounded-md text-foreground" aria-label="Menu">
-                <HugeiconsIcon icon={Menu01Icon} strokeWidth={2} className="size-5" />
+            <button
+                type="button"
+                onClick={toggle_theme}
+                aria-label={"Switch to " + ("light" if dark_mode else "dark") + " mode"}
+                title={"Switch to " + ("light" if dark_mode else "dark") + " mode"}
+                aria-pressed={dark_mode}
+                className="flex size-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted"
+            >
+                <HugeiconsIcon icon={Sun03Icon if dark_mode else Moon02Icon} strokeWidth={2} className="size-5" />
             </button>
         </div>
-    </nav>;
+    </nav>
+    {logged_in and path != "/explore" and <CareerAssistant compact={True} />}
+    </>;
 }

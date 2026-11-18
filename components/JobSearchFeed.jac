@@ -512,10 +512,13 @@ def:pub JobSearchFeed -> JsxElement {
         }
     }
 
-    # Pass the job along, because external listings aren't in the built-in job list.
     def apply_to(job: any) {
-        details = {"title": str(job.get("title", "")), "desc": str(job.get("desc", "")), "tags": str(job.get("tags", ""))};
-        nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))), {"state": {"job": details}});
+        try {
+            localStorage.setItem("jaccit_selected_job", JSON.stringify(job));
+            nav("/tools");
+        } except Exception {
+            track_message = "Could not open this job in the application tools.";
+        }
     }
 
     def track_key(job: any) -> str {

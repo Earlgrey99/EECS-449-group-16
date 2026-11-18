@@ -219,7 +219,7 @@ test "a Google account has no email, even with a self-edited profile" {
     assert linked["first_name"] == "Goo";
 }
 
-test "a Google account finds only the row bound to its own id" {
+test "a Google account can use app features before completing its profile" {
     conn = make_test_db();
     create_user(name="Victim", email="victim@example.com", conn=conn);
     newcomer = {"user_id": "google-user", "email": None, "is_sso": True, "name": "New User"};
@@ -230,27 +230,38 @@ test "a Google account finds only the row bound to its own id" {
     assert first["email"] == "";
     assert first["oauth_id"] == "google-user";
     assert first["auth_provider"] == "google";
-    assert _sync_caller(first, conn=conn) == {"ok": True, "user": None};
+    initial_sync = _sync_caller(first, conn=conn);
+    assert initial_sync["ok"] is True;
+    provisional_user = initial_sync["user"];
+    assert provisional_user["onboarding_completed"] == 0;
+    assert provisional_user["email"] == "";
+    assert provisional_user["oauth_id"] == "google-user";
+
+    # Feature data can be associated with the provisional account before a profile exists.
+    again = _caller_from_identity(newcomer, conn=conn);
+    assert again["app_user"]["id"] == provisional_user["id"];
+    assert again["email"] == "";
 
     # The email they supply cannot be someone else's.
-    assert _email_for_caller(first, "victim@example.com", conn=conn)["ok"] is False;
-    assert _email_for_caller(first, "not-an-email", conn=conn)["ok"] is False;
-    assert _email_for_caller(first, "", conn=conn)["ok"] is False;
-    chosen = _email_for_caller(first, "New@Example.com", conn=conn);
+    assert _email_for_caller(again, "victim@example.com", conn=conn)["ok"] is False;
+    assert _email_for_caller(again, "not-an-email", conn=conn)["ok"] is False;
+    assert _email_for_caller(again, "", conn=conn)["ok"] is False;
+    chosen = _email_for_caller(again, "New@Example.com", conn=conn);
     assert chosen == {"ok": True, "email": "new@example.com"};
 
     _submit_profile(
-        email=chosen["email"], first_name="New", oauth_id=first["oauth_id"],
-        auth_provider=first["auth_provider"], conn=conn
+        email=chosen["email"], first_name="New", oauth_id=again["oauth_id"],
+        auth_provider=again["auth_provider"], conn=conn
     );
-    again = _caller_from_identity(newcomer, conn=conn);
-    assert again["app_user"]["email"] == "new@example.com";
-    assert again["email"] == "new@example.com";
-    assert _sync_caller(again, conn=conn)["user"]["onboarding_completed"] == 1;
-    assert _load_profile(email=again["email"], identity=again, conn=conn)["onboarding_completed"] is True;
+    completed = _caller_from_identity(newcomer, conn=conn);
+    assert completed["app_user"]["id"] == provisional_user["id"];
+    assert completed["app_user"]["email"] == "new@example.com";
+    assert completed["email"] == "new@example.com";
+    assert _sync_caller(completed, conn=conn)["user"]["onboarding_completed"] == 1;
+    assert _load_profile(email=completed["email"], identity=completed, conn=conn)["onboarding_completed"] is True;
 
     # Once the row exists, a different supplied email changes nothing.
-    assert _email_for_caller(again, "other@example.com", conn=conn)["email"] == "new@example.com";
+    assert _email_for_caller(completed, "other@example.com", conn=conn)["email"] == "new@example.com";
 }
 
 test "a real Google sign-in resolves to a caller" {
