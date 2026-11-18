@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data Engineering Intern application (practice form)</title>
+    <style>
+      :root { --ink: #1f2937; --muted: #6b7280; --line: #d1d5db; --accent: #059669; --bg: #f9fafb; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+      .banner { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+      h1 { margin: 24px 0 4px; font-size: 26px; }
+      .sub { margin: 0 0 24px; color: var(--muted); }
+      fieldset { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 0 0 18px; }
+      legend { font-weight: 600; padding: 0 6px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .full { grid-column: 1 / -1; }
+      label.field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 500; }
+      input[type=text], input[type=email], input[type=tel], input[type=url], select, textarea {
+        font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%;
+      }
+      textarea { min-height: 90px; }
+      .choice { display: flex; gap: 18px; font-weight: 400; margin-top: 4px; }
+      .q { font-size: 14px; font-weight: 500; }
+      button { font: inherit; font-weight: 600; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; }
+      #sent { margin-top: 12px; color: var(--accent); font-weight: 600; }
+      @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="banner">Practice form for the class demo. Bluewater Analytics is made up, and this page sends nothing anywhere.</p>
+      <h1>Data Engineering Intern</h1>
+      <p class="sub">Bluewater Analytics · Ann Arbor, MI · Hybrid</p>
+
+      <form id="application">
+        <fieldset>
+          <legend>Contact information</legend>
+          <div class="grid">
+            <label class="field" for="first_name">First name*<input type="text" id="first_name" name="first_name" autocomplete="off" /></label>
+            <label class="field" for="last_name">Last name*<input type="text" id="last_name" name="last_name" autocomplete="off" /></label>
+            <label class="field" for="email">Email*<input type="email" id="email" name="email" autocomplete="off" /></label>
+            <label class="field" for="phone">Phone*<input type="tel" id="phone" name="phone" autocomplete="off" /></label>
+            <label class="field full" for="location">Location (city)*<input type="text" id="location" name="location" autocomplete="off" /></label>
+            <label class="field" for="linkedin">LinkedIn profile<input type="url" id="linkedin" name="linkedin" autocomplete="off" /></label>
+            <label class="field" for="github">GitHub<input type="url" id="github" name="github" autocomplete="off" /></label>
+            <label class="field full" for="resume">Resume/CV*<input type="file" id="resume" name="resume" accept=".pdf" /></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Education and work</legend>
+          <div class="grid">
+            <label class="field" for="school">School<input type="text" id="school" name="school" autocomplete="off" /></label>
+            <label class="field" for="degree">Degree<input type="text" id="degree" name="degree" autocomplete="off" /></label>
+            <label class="field" for="major">Major / discipline<input type="text" id="major" name="discipline" autocomplete="off" /></label>
+            <label class="field" for="grad_year">Graduation year<input type="text" id="grad_year" name="grad_year" autocomplete="off" /></label>
+            <label class="field" for="current_company">Current company<input type="text" id="current_company" name="org" autocomplete="off" /></label>
+            <label class="field" for="current_title">Current title<input type="text" id="current_title" name="title" autocomplete="off" /></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Application questions</legend>
+          <div class="grid">
+            <label class="field full" for="country">Country*
+              <select id="country" name="country">
+                <option value="">Select...</option>
+                <option>Canada</option>
+                <option>United States</option>
+                <option>Mexico</option>
+              </select>
+            </label>
+            <label class="field full" for="work_auth">Are you legally authorized to work in the United States?*
+              <select id="work_auth" name="work_auth">
+                <option value="">Select...</option>
+                <option>Yes</option>
+                <option>No</option>
+              </select>
+            </label>
+            <div class="full">
+              <div class="q" id="sponsor-q">Will you now or in the future require sponsorship for employment visa status?*</div>
+              <div class="choice" role="radiogroup" aria-labelledby="sponsor-q">
+                <label><input type="radio" name="sponsorship" value="yes" /> Yes</label>
+                <label><input type="radio" name="sponsorship" value="no" /> No</label>
+              </div>
+            </div>
+            <label class="field" for="start_date">Earliest start date<input type="text" id="start_date" name="start_date" autocomplete="off" /></label>
+            <label class="field" for="salary">Salary expectations<input type="text" id="salary" name="salary" autocomplete="off" /></label>
+            <label class="field full" for="why">Why do you want to work at Bluewater Analytics?*<textarea id="why" name="why"></textarea></label>
+            <label class="field" for="dob">Date of birth<input type="text" id="dob" name="dob" autocomplete="off" /></label>
+            <label class="field" for="ssn">Social Security Number<input type="text" id="ssn" name="ssn" autocomplete="off" /></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Voluntary self-identification</legend>
+          <div class="grid">
+            <label class="field" for="gender">Gender
+              <select id="gender" name="gender">
+                <option value="">Select...</option>
+                <option>Female</option>
+                <option>Male</option>
+                <option>Non-binary</option>
+                <option>Decline to self-identify</option>
+              </select>
+            </label>
+            <label class="field" for="veteran">Veteran status
+              <select id="veteran" name="veteran">
+                <option value="">Select...</option>
+                <option>I am not a protected veteran</option>
+                <option>I identify as one or more of the classifications of a protected veteran</option>
+                <option>I don't wish to answer</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <button type="submit">Submit application</button>
+        <p id="sent" role="status" hidden>Practice form: nothing was sent.</p>
+      </form>
+    </main>
+    <script>
+      document.getElementById("application").addEventListener("submit", function (event) {
+        event.preventDefault();
+        document.getElementById("sent").hidden = false;
+      });
+    </script>
+  </body>
+</html>

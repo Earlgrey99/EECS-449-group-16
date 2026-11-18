@@ -1,0 +1,17 @@
+About the role
+You will build the ETL pipelines behind our data warehouse.
+
+What you'll do
+- Build ETL pipelines in Python and SQL for PostgreSQL and Snowflake
+- Schedule and monitor pipelines with Apache Airflow
+- Write data quality checks that catch duplicates and missing values before reports run
+- Process large datasets with Spark and pandas
+- Package services with Docker and deploy them on AWS
+- Help the team turn messy CSV exports into clean, documented tables
+
+What we're looking for
+- Pursuing a degree in Computer Science, Data Science, or a related field
+- Strong Python and SQL
+- Experience with relational databases such as PostgreSQL
+- Familiarity with Airflow, dbt, or Spark is a plus
+- Clear communication and comfort working with a team

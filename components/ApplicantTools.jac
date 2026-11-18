@@ -149,7 +149,8 @@ def:pub ApplicantTools() -> JsxElement {
                 }
             }
         }
-        if not passed and not has_selected_job {
+        # Only warn when a job was asked for; opening the page on its own is normal.
+        if job_id {
             job_notice = "We couldn't load that job. Paste its description below.";
         }
         if not job_from_feed {
