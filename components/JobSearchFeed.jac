@@ -54,7 +54,8 @@ def:pub JobCard(
     onSave: Callable[[], None],
     logo: str = "",
     source: str = "",
-    match_score: int = -1
+    match_score: int = -1,
+    is_example: bool = False
 ) -> JsxElement {
     sal_display = format_salary(salary);
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
@@ -74,6 +75,7 @@ def:pub JobCard(
             <p className="text-sm text-muted-foreground">{location}</p>
             {bool(sal_display) and <p className="text-sm font-medium tabular-nums">{sal_display}</p>}
             {match_score >= 0 and <Badge variant={("default" if match_score >= 75 else ("secondary" if match_score >= 50 else "outline"))} className="w-fit tabular-nums">{str(match_score) + "% match"}</Badge>}
+            {is_example and <Badge variant="outline" className="w-fit text-xs font-medium border-dashed">Example listing</Badge>}
             <div className="mt-1 flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
                     {for tag in tags.split(", ")[:2] {
@@ -139,6 +141,8 @@ def:pub JobSearchFeed -> JsxElement {
     has tailored_summary: str = "";
     has is_custom_search: bool = False;
     has custom_summary: str = "";
+    has data_origin: str = "";
+    has tailored_origin: str = "";
     has show_filters: bool = False;
     has salary_min_filter: str = "";
     has contract_types_filter: list[str] = [];
@@ -221,6 +225,12 @@ def:pub JobSearchFeed -> JsxElement {
         if not init_jobs {
             init_jobs = await list_jobs();
         }
+        if tailored_res and tailored_res.get("origin") {
+            data_origin = str(tailored_res.get("origin"));
+        } else {
+            data_origin = "examples";
+        }
+        tailored_origin = data_origin;
         jobs = init_jobs;
         tailored_jobs = init_jobs;
         loading = False;
@@ -246,8 +256,11 @@ def:pub JobSearchFeed -> JsxElement {
         } except Exception {}
         if match_res and match_res.get("ok") {
             has_resume = bool(match_res.get("has_resume"));
+            # Re-scored jobs replace their old rows, so a resume upload or edit
+            # invalidates the previous scores on the next feed load.
             new_rows: list[dict[str, any]] = match_res.get("scores") or [];
-            match_rows = new_rows + match_rows;
+            fresh_ids = {str(r.get("id", "")) for r in new_rows};
+            match_rows = new_rows + [r for r in match_rows if str(r.get("id", "")) not in fresh_ids];
         }
     }
 
@@ -376,6 +389,7 @@ def:pub JobSearchFeed -> JsxElement {
         } else {
             jobs = [];
         }
+        data_origin = str(res.get("origin") or "") if (res and res.get("ok")) else "provider_error";
         is_custom_search = True;
 
         parts: list[str] = [];
@@ -415,6 +429,7 @@ def:pub JobSearchFeed -> JsxElement {
         jobs = tailored_jobs;
         is_custom_search = False;
         custom_summary = "";
+        data_origin = tailored_origin;
         salary_min_filter = "";
         contract_types_filter = [];
         sectors_filter = [];
@@ -536,7 +551,7 @@ def:pub JobSearchFeed -> JsxElement {
                 applied_date=str(today.toLocaleDateString("en-CA")),
                 description="",
                 pay=None,
-                status="Applied",
+                status="Saved",
                 job_url=str(job.get("link") or job.get("id") or ""),
                 salary_text=str(job.get("salary") or "")
             );
@@ -562,6 +577,12 @@ def:pub JobSearchFeed -> JsxElement {
     def handle_source_filter(e: ChangeEvent) { source_filter = e.target.value; }
 
     return <div className="flex min-h-svh flex-col bg-primary/5">
+        {data_origin == "examples" and <div role="note" className="border-b border-amber-300/60 bg-amber-50 px-6 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
+            <strong className="font-semibold">Example listings.</strong> These are sample openings shown when no live provider results are available — not real job posts.
+        </div>}
+        {data_origin == "provider_error" and <div role="alert" className="border-b border-destructive/30 bg-destructive/10 px-6 py-2 text-xs text-destructive">
+            <strong className="font-semibold">Job providers could not be reached.</strong> Showing example listings instead — please try your search again.
+        </div>}
         <TopNav />
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 pt-8 pb-16 pl-6 pr-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {loading and <div className="flex items-center justify-center p-16"><Spinner /></div>}
@@ -829,6 +850,7 @@ def:pub JobSearchFeed -> JsxElement {
                                 logo={str(j.get("logo") or j.get("companyLogo") or j.get("company_logo") or "")}
                                 source={str(j.get("source") or j.get("site") or "")}
                                 match_score={card_score(j)}
+                                is_example={bool(j.get("example"))}
                                 active={sel is not None and str(sel.get("id", "")) == str(j.get("id", ""))}
                                 saved={is_saved(j)}
                                 onSelect={lambda { selected_id = str(j.get("id", "")); }}
@@ -853,6 +875,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     </div>
                                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                                         <Badge variant="outline">{str(sel.get("type", "Full-time"))}</Badge>
+                                        {bool(sel.get("example")) and <Badge variant="outline" className="border-dashed">Example listing</Badge>}
                                         {bool(str(sel.get("source") or sel.get("site") or "")) and <span className="text-xs text-muted-foreground">{"via " + str(sel.get("source") or sel.get("site") or "")}</span>}
                                     </div>
                                 </div>

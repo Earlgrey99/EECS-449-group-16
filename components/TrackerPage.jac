@@ -111,6 +111,7 @@ def:pub TrackerPage() -> JsxElement {
     has selected_application_ids: list[int] = [];
     has edit_drafts: list[dict[str, any]] = [];
     has status_options: list[dict[str, str]] = [
+        {"name": "Saved", "color": "#a16207"},
         {"name": "Applied", "color": "#64748b"},
         {"name": "Interview", "color": "#2563eb"},
         {"name": "Offer", "color": "#16a34a"},
@@ -122,7 +123,7 @@ def:pub TrackerPage() -> JsxElement {
     has new_date: str = "";
     has new_description: str = "";
     has new_pay: str = "";
-    has new_status: str = "Applied";
+    has new_status: str = "Saved";
     has new_resume_pdf_name: str = "";
     has new_resume_pdf_content: str = "";
     has new_cover_letter_pdf_name: str = "";

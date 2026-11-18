@@ -18,6 +18,7 @@ import from .auth_sync { _resolve_caller, _sync_caller }
 import from .jobs { _extract_salary_values }
 
 glob DEFAULT_STATUS_OPTIONS: list[dict[str, str]] = [
+    {"name": "Saved", "color": "#a16207"},
     {"name": "Applied", "color": "#64748b"},
     {"name": "Interview", "color": "#2563eb"},
     {"name": "Offer", "color": "#16a34a"},
@@ -39,7 +40,7 @@ def _clean_status(status: any, options: list[dict[str, str]]) -> str {
             return option["name"];
         }
     }
-    return "Applied";
+    return "Saved";
 }
 
 def _is_valid_status(status: any, options: list[dict[str, str]]) -> bool {
@@ -138,7 +139,7 @@ def _add_for(
     applied_date: str,
     description: str = "",
     pay: int | None = None,
-    status: str = "Applied",
+    status: str = "Saved",
     job_url: str = "",
     resume_pdf_name: str = "",
     resume_pdf_content: str = "",

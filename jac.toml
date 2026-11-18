@@ -8,7 +8,7 @@ jac-version = "==0.37.11"
 
 [byllm.model]
 # default_model = "ollama/gemma4:e4b"
-default_model = "deepseek/deekseek-flash"
+default_model = "deepseek/deepseek-chat"
 
 [placement.pins]
 "services.*" = "server"
@@ -49,8 +49,10 @@ host = "http://localhost:8000"
 client_auth_callback_url = "http://localhost:8000/login"
 
 [scale.sso.google]
-client_id = "${CLIENT_ID:-968818097390-0k1pcgde5mnghqgm2legs34a5l727gl1.apps.googleusercontent.com}"
-client_secret = "${CLIENT_SECRET:-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}"
+# Credentials come from server configuration only (Settings > Environment in
+# JacHammer, or the process environment). Never commit real values here.
+client_id = "${CLIENT_ID}"
+client_secret = "${CLIENT_SECRET}"
 
 [client.vite]
 plugins = [
