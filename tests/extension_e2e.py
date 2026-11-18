@@ -8,7 +8,8 @@ Loads the real extension in Chromium and drives its real popup:
 
 A toolbar click can't be automated, so the test copy of the extension gets access to
 the fixture page's origin only, which matches what activeTab grants, and the popup is
-told which tab to use.
+told which tab to use. The test copy also treats the fixture site as a hiring site, so
+the on-page panel appears, and opens the panel's shadow root so the test can read it.
 Creates a throwaway account with random credentials in the configured database.
 """
 from __future__ import annotations
@@ -71,14 +72,56 @@ def create_account() -> tuple[str, str]:
     return email, token
 
 
+RESUME_TEXT = """Priya Natarajan
+(734) 555-0182 | linkedin.com/in/priya-n | github.com/priyan
+Detroit, MI
+EDUCATION
+University of Michigan, Expected May 2027
+Bachelor of Science in Computer Engineering
+EXPERIENCE
+Data Engineering Intern, Acme Robotics (Jun 2025 - Present)
+- Built Python pipelines for robot telemetry.
+"""
+
+
+def resume_pdf_module():
+    sys.path.insert(0, str(ROOT))
+    import resume_pdf
+
+    return resume_pdf
+
+
+def create_resume_only_account() -> str:
+    """An account whose profile has a name but no contact details or answers, only a PDF resume."""
+    resume_pdf = resume_pdf_module()
+    pdf = resume_pdf.render_pdf(resume_pdf.parse_resume(RESUME_TEXT))
+    email = f"ext-{secrets.token_hex(6)}@example.test"
+    token = api("/user/register", {
+        "identities": [{"type": "username", "value": email}],
+        "credential": {"type": "password", "password": secrets.token_urlsafe(24)},
+    })["data"]["token"]
+    saved = api("/function/submit_profile_and_generate_query", {
+        "token": token, "first_name": "Pri", "last_name": "Saved", "location": "Remote",
+        "job_titles": "Data Engineer", "salary_min": None, "contract_type": "Full-time",
+        "resume_title": "priya_resume.pdf",
+        "resume_content": "data:application/pdf;base64," + base64.b64encode(pdf).decode(),
+    }, token)
+    assert saved["data"]["result"]["ok"], saved
+    return token
+
+
 def prepare_extension(directory: Path) -> Path:
     target = directory / "extension"
     shutil.copytree(ROOT / "extension", target)
     manifest = json.loads((target / "manifest.json").read_text())
-    manifest["host_permissions"] = ["http://localhost:8000/*", "http://127.0.0.1/*"]
-    manifest["background"] = {"service_worker": "test_worker.js"}  # Reveals the extension id.
+    manifest["host_permissions"] = [f"{BASE}/*", "http://127.0.0.1/*"]
+    for script in ("background.js", "popup.js"):
+        path = target / script
+        path.write_text(path.read_text().replace("http://localhost:8000", BASE))
+    manifest["content_scripts"][0]["matches"] = ["http://127.0.0.1/ats_form.html*"]
     (target / "manifest.json").write_text(json.dumps(manifest))
-    (target / "test_worker.js").write_text("")
+    panel = target / "panel.js"
+    panel.write_text(panel.read_text().replace('mode: "closed"', 'mode: "open"'))
     return target
 
 
@@ -107,6 +150,8 @@ def main() -> int:
         pages.mkdir()
         shutil.copy(ROOT / "tests/extension/fixtures/tricky_form.html", pages)
         shutil.copy(ROOT / "tests/extension/fixtures/other_origin_frame.html", pages)
+        shutil.copy(ROOT / "tests/extension/fixtures/ats_form.html", pages)
+        shutil.copy(ROOT / "tests/extension/fixtures/resume_form.html", pages)
         shutil.copy(ROOT / "examples/application_form.html", pages)
         server, site = serve_fixtures(pages)
 
@@ -276,11 +321,150 @@ def main() -> int:
                 popup.locator("#message.error").wait_for(timeout=10000)
                 check("explains pages it can't run on", "can't run on this page" in popup.locator("#message").inner_text())
 
+                # The on-page panel, with saved answers.
+                api("/function/save_application_answers", {"token": token, "answers": {
+                    "work_authorized": "yes", "needs_sponsorship": "no", "current_company": "Acme",
+                    "salary": "120000", "country": "United States",
+                }}, token)
+                popup.goto(f"chrome-extension://{extension_id}/options.html")
+                popup.locator("select[name=gender]").select_option("woman")
+                popup.locator("select[name=veteran]").select_option("no")
+                popup.locator("select[name=hispanic]").select_option("decline")
+                popup.locator("select[name=race]").select_option("white")
+                popup.get_by_role("button", name="Save").click()
+                popup.get_by_text("Saved.", exact=True).wait_for(timeout=5000)
+                check(
+                    "demographic answers stay in this browser",
+                    popup.evaluate("chrome.storage.local.get('demographics').then(r => r.demographics.gender)") == "woman",
+                )
+
+                ats = context.new_page()
+                ats.goto(f"{site}/ats_form.html")
+                panel = ats.locator("#launchpad-autofill-panel")
+                button = panel.get_by_role("button", name="Autofill this application")
+                button.wait_for(timeout=10000)
+                check("the panel appears on a hiring site", button.is_visible())
+                check("nothing is filled before the click", ats.locator("#first").input_value() == "")
+                button.click()
+                panel.get_by_text("Please review them", exact=False).wait_for(timeout=20000)
+                report = panel.locator("section.panel").inner_text()
+                print("\nPanel report:\n" + report + "\n")
+
+                for selector, value in {"#first": "Ada", "#last": "Tester", "#email": email, "#company": "Acme", "#salary": "120000"}.items():
+                    actual = ats.locator(selector).input_value()
+                    check(f"panel fills {selector}", actual == value, actual)
+                picked = lambda field: ats.locator(f"#{field}").get_attribute("data-selected")
+                check("picks from a searchable dropdown", picked("q-country") == "United States", picked("q-country"))
+                check("answers work authorization", picked("q-auth") == "Yes", picked("q-auth"))
+                check("maps a saved gender to the site's wording", picked("q-gender") == "Female", picked("q-gender"))
+                check("maps a saved veteran answer", picked("q-vet") == "I am not a protected veteran", picked("q-vet"))
+                check("picks a city suggestion", picked("q-city") == "Ann Arbor, Michigan, United States", picked("q-city"))
+                check("leaves an unknown dropdown alone", picked("q-ambiguous") is None)
+                check("never answers a blocked dropdown", picked("q-dob") is None)
+                pressed = lambda root: ats.evaluate(
+                    "root => [...document.querySelectorAll(root + ' button[aria-pressed=true]')].map(b => b.textContent)", root
+                )
+                check("presses the right Yes/No button", pressed("#sponsor") == ["No"], pressed("#sponsor"))
+                check("leaves an unknown Yes/No question", pressed("#other-yesno") == [])
+                check("picks a radio answer", ats.locator("input[name=hispanic][value=d]").is_checked())
+                check("skips a hidden survey", ats.evaluate("[...document.getElementsByName('hidden-survey')].every(r => !r.checked)"))
+                check("never answers a blocked radio question", ats.evaluate("[...document.getElementsByName('age')].every(r => !r.checked)"))
+                check(
+                    "picks one race checkbox",
+                    ats.locator("#race input[name=White]").is_checked() and not ats.locator("#race input[name=Other]").is_checked(),
+                )
+                check(
+                    "picks a race checkbox when labels are siblings",
+                    ats.locator("#eth-2").is_checked() and not ats.locator("#eth-3").is_checked(),
+                )
+                check("a reused checkbox name doesn't merge two questions", not ats.locator("#eth-4").is_checked() and not ats.locator("#oth-2").is_checked())
+                check("finds a location field with an icon-only button", picked("ashby-city") == "Ann Arbor, MI", picked("ashby-city"))
+                check("never ticks a consent box", not ats.locator("#consent").is_checked())
+                check("never fills a blocked text field", ats.locator("#ssn").input_value() == "")
+                check("leaves free-text questions", ats.locator("#why").input_value() == "")
+                resume_name = ats.evaluate("document.getElementById('resume').files[0]?.name")
+                check("attaches the resume to a hidden Attach input", resume_name == "ada_resume.pdf", resume_name)
+                check("the panel lists what it never answers", "Launchpad never answers these" in report and "Social Security Number" in report, report)
+                check("the panel contains no values", email not in report and "120000" not in report, report)
+                check("nothing is submitted by autofill", ats.evaluate("window.__submitted") is False)
+                check("the page cannot read the token", token not in ats.content())
+
+                # Pressing the site's Submit offers tracking.
+                ats.locator("#submit").click()
+                panel.get_by_text("Submitted? Add it to your tracker.").wait_for(timeout=5000)
+                check("guesses the job from the page title", panel.get_by_label("Job title").input_value() == "Staff Engineer" and panel.get_by_label("Company").input_value() == "Fixture Labs")
+                panel.get_by_role("button", name="Add to tracker").click()
+                panel.get_by_text("Added to your tracker.").wait_for(timeout=10000)
+                tracked = api("/function/list_tracker_applications", {"token": token}, token)["data"]["result"]["applications"]
+                check("Submit reaches the tracker", any(t["role"] == "Staff Engineer" and t["company"] == "Fixture Labs" for t in tracked), tracked)
+
+                popup.goto(f"{popup_url}?tab={tab_id}")
+                popup.locator("#main-view").wait_for(state="visible", timeout=15000)
+
                 # Disconnect removes the token.
                 popup.locator("#disconnect").click()
                 popup.locator("#connect").wait_for(state="visible", timeout=5000)
                 session = popup.evaluate("chrome.storage.session.get(null)")
                 check("disconnect clears the token", "token" not in session, list(session))
+
+                # A profile with only a PDF resume: blanks are filled from the resume,
+                # and a tailored resume the user chose is the one attached.
+                resume_token = create_resume_only_account()
+                tailored_pdf = resume_pdf_module().render_pdf(resume_pdf_module().parse_resume(RESUME_TEXT))
+                chosen = api("/function/use_tailored_resume", {
+                    "token": resume_token,
+                    "pdf": "data:application/pdf;base64," + base64.b64encode(tailored_pdf).decode(),
+                    "filename": "Resume - Data Engineer.pdf",
+                    "job_title": "Data Engineer",
+                }, resume_token)
+                assert chosen["data"]["result"]["ok"], chosen
+                launchpad.evaluate("token => localStorage.setItem('jac_token', token)", resume_token)
+                resume_page = context.new_page()
+                resume_page.goto(f"{site}/resume_form.html")
+                resume_tab = popup.evaluate(
+                    "url => chrome.tabs.query({url}).then(tabs => tabs[0].id)", f"{site}/resume_form.html"
+                )
+                popup.goto(f"{popup_url}?tab={resume_tab}")
+                popup.locator("#connect").click()
+                popup.locator("#main-view").wait_for(state="visible", timeout=15000)
+                popup.locator("#fill").click()
+                popup.get_by_text("Filled. Please review", exact=False).wait_for(timeout=10000)
+                resume_report = results_text(popup)
+                print("\nResume report:\n" + resume_report + "\n")
+                from_resume = {
+                    "#phone": "(734) 555-0182",
+                    "#linkedin": "https://www.linkedin.com/in/priya-n",
+                    "#github": "https://github.com/priyan",
+                    "#city": "Detroit, MI",
+                    "#school": "University of Michigan",
+                    "#degree": "Bachelor's Degree",
+                    "#major": "Computer Engineering",
+                    "#grad": "2027",
+                    "#company": "Acme Robotics",
+                    "#title": "Data Engineering Intern",
+                }
+                for selector, value in from_resume.items():
+                    actual = resume_page.locator(selector).input_value()
+                    check(f"fills {selector} from the resume", actual == value, actual)
+                check(
+                    "the saved profile wins over the resume",
+                    resume_page.locator("#first").input_value() == "Pri" and resume_page.locator("#last").input_value() == "Saved",
+                    resume_page.locator("#first").input_value(),
+                )
+                check(
+                    "the report says which answers came from the resume",
+                    "Read from your resume. Please check (10)" in resume_report and "Field of study" in resume_report,
+                    resume_report,
+                )
+                attached = resume_page.evaluate("() => document.getElementById('resume').files[0]?.name || null")
+                check("attaches the tailored resume the user chose", attached == "Resume - Data Engineer.pdf", attached)
+                check(
+                    "the popup names the tailored resume",
+                    "tailored for Data Engineer" in popup.locator("#resume-title").inner_text(),
+                    popup.locator("#resume-title").inner_text(),
+                )
+                profile_data = api("/function/get_user_profile_data", {"token": resume_token}, resume_token)["data"]["result"]
+                check("nothing from the resume is saved to the profile", not profile_data["user"].get("phone") and not profile_data["answers"], profile_data["answers"])
             finally:
                 context.close()
                 server.shutdown()

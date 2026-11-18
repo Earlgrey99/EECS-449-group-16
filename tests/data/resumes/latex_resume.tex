@@ -1,0 +1,71 @@
+\documentclass[letterpaper,11pt]{article}
+\usepackage[margin=0.5in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\pagestyle{empty}
+\raggedright
+\setlength{\tabcolsep}{0in}
+\setlength{\parindent}{0pt}
+\renewcommand{\section}[1]{\vspace{4pt}{\large\scshape #1}\par\vspace{-3pt}\rule{\textwidth}{0.4pt}\par\vspace{2pt}}
+\newcommand{\resumeItem}[1]{\item\small{#1}}
+\newcommand{\resumeSubheading}[4]{
+  \item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}
+}
+\newcommand{\resumeSubHeadingListStart}{\begin{list}{}{\setlength{\leftmargin}{0.15in}\setlength{\itemsep}{0pt}\setlength{\topsep}{0pt}}}
+\newcommand{\resumeSubHeadingListEnd}{\end{list}}
+\newcommand{\resumeItemListStart}{\begin{itemize}\setlength{\itemsep}{-2pt}}
+\newcommand{\resumeItemListEnd}{\end{itemize}}
+\begin{document}
+\begin{center}
+    \textbf{\Huge \scshape Jordan Rivera} \\ \vspace{1pt}
+    \small 555-201-3344 $|$ \href{mailto:jordan@example.com}{\underline{jordan@example.com}} $|$
+    \href{https://linkedin.com/in/jordan-rivera}{\underline{linkedin.com/in/jordan-rivera}} $|$
+    \href{https://github.com/jrivera}{\underline{github.com/jrivera}}
+\end{center}
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of Michigan}{Ann Arbor, MI}
+      {Bachelor of Science in Computer Science}{Aug. 2022 -- May 2026}
+  \resumeSubHeadingListEnd
+\section{Experience}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Software Engineering Intern}{May 2025 -- Aug. 2025}
+      {Northwind Logistics}{Detroit, MI}
+      \resumeItemListStart
+        \resumeItem{Designed a React dashboard that let dispatchers track 2,000 daily shipments}
+        \resumeItem{Wrote unit tests in Jest that raised coverage of the routing service from 40\% to 75\%}
+        \resumeItem{Built a Python ETL job that loaded carrier data into PostgreSQL every night, cutting manual data entry by 6 hours a week}
+        \resumeItem{Presented sprint demos to the operations team}
+      \resumeItemListEnd
+    \resumeSubheading
+      {Research Assistant}{Jan. 2024 -- Apr. 2025}
+      {University of Michigan}{Ann Arbor, MI}
+      \resumeItemListStart
+        \resumeItem{Organized lab meetings and kept notes for a team of 8 students}
+        \resumeItem{Cleaned survey data with pandas and SQL and built reports for faculty}
+        \resumeItem{Trained a scikit-learn model that predicted course drop rates with 82\% accuracy}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+\section{Projects}
+    \resumeSubHeadingListStart
+      \item
+          \textbf{Trailhead} $|$ \emph{Flask, PostgreSQL, Docker}
+          \resumeItemListStart
+            \resumeItem{Made a hiking trip planner used by 300 students}
+            \resumeItem{Packaged the app with Docker and deployed it on a cloud server with a GitHub Actions pipeline}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+\section{Technical Skills}
+ \begin{list}{}{\setlength{\leftmargin}{0.15in}}
+    \small{\item{
+     \textbf{Languages}{: Java, Python, C++, SQL, JavaScript, HTML/CSS} \\
+     \textbf{Frameworks}{: React, Flask, Node.js, JUnit, Jest} \\
+     \textbf{Developer Tools}{: Git, Docker, VS Code, Linux}
+    }}
+ \end{list}
+\end{document}

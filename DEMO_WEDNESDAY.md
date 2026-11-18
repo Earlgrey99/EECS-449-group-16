@@ -1,7 +1,7 @@
-# Launchpad — Wednesday, November 4, 2026 demo checklist
+# Launchpad demo checklist
 
-> **Local classroom prototype** — run only on localhost with sample data.
-> The applicant autofill is not a full production workflow.
+> **Local prototype.** Run on localhost with sample data and fake applicant details.
+> The extension fills forms but never submits them.
 
 ## 1. Set up the demo Mac (before presenting)
 
@@ -15,100 +15,113 @@ git pull --ff-only origin main
 jac --version                    # expected 0.37.11
 jac install
 export TURSO_DATABASE_URL="$HOME/launchpad-demo.db"
+jac clean --cache --force        # a stale cache breaks the page after a restart
 jac run --dev --profile test main.jac
 ```
 
-The `git switch` / `git pull` commands require a clean working tree.
-Use the existing shell or set `TURSO_DATABASE_URL` again when opening a new shell.
-The SQLite demo database is outside the Git checkout. Do not commit real resumes,
-credentials, or database files.
+`git switch` and `git pull` need a clean working tree. Set `TURSO_DATABASE_URL` again in any
+new shell. Keep the database outside the repo, and don't commit resumes, credentials, or
+database files. Run `jac install` after every pull, because new packages are added from time
+to time.
+
+Clear the cache every time you start the server. Without it, a restart can show a build
+error ("format_salary are not exported") or a page that keeps reloading.
+
+Load the extension:
+
+1. Open `chrome://extensions` and turn on **Developer mode**.
+2. Click **Load unpacked** and choose the repo's `extension/` folder. If it's already loaded,
+   click its reload button instead.
+3. Click the extension icon, then **Connect to Launchpad**.
 
 Check these routes before the talk:
 
-- `http://localhost:8000/` — landing page
-- `http://localhost:8000/login` — authentication (test profile auto-login)
-- `http://localhost:8000/jobs` — job feed
-- `http://localhost:8000/tools` — autofill and resume review
-- `http://localhost:8000/tracker` — application tracker
-- `http://localhost:8000/me` — profile/onboarding
+- `http://localhost:8000/`: landing page
+- `http://localhost:8000/login`: sign-in (the test profile signs in automatically)
+- `http://localhost:8000/jobs`: job feed with match scores
+- `http://localhost:8000/me`: profile, contact details, and application answers
+- `http://localhost:8000/tools`: autofill profile and tailored resume PDF
+- `http://localhost:8000/tracker`: application tracker
 
-In test mode, a fresh login should use the development test user automatically.
-If you deliberately signed out, the login page may show a test-user sign-in option.
-Do not rely on Google OAuth or a working external jobs API for the classroom demo.
+Don't rely on Google sign-in or the external job APIs during the demo.
 
-## 2. The 5-minute live walkthrough
+## 2. Prepare the demo profile
 
-**0:00–0:30: Landing and jobs.**
-Introduce Launchpad as a Jac-based job application workflow. Go to Jobs.
-Explain local sample listings are a reliable fallback, while the backend also
-supports Jooble, USAJobs, Himalayas and The Muse with optional credentials/network.
+On **Account → Profile**:
 
-**0:30–1:45: Autofill.**
-In Jobs, select the local **Data Analyst** role (Cascade Health).
-Click **Apply now (demo)**. On the Applicant tools page, enter:
-`Test Applicant`, `test@example.com`, `5551234567`.
-Click **Autofill demo form**. Show that fields populate and remain editable.
-The submit button is intentionally disabled; this does **not** submit a real application.
+1. Step 1: name, phone, city, and a LinkedIn URL.
+2. Step 2: under **Application answers**, set work authorization, sponsorship, school, and
+   current company.
+3. Step 3: upload a sample PDF resume, then click **Finish**.
 
-**1:45–2:45: Resume review.**
-On the same page, keep the sample resume or paste:
-```text
-Data science student
-- Built Python data pipelines to process incoming files.
-- Created dashboards to summarize analytics.
-```
-Use the job description prefilled from the selected local Data Analyst role.
-Click **Generate resume review**. Explain verified matches (e.g. Python,
-dashboards) and requirements that need evidence (e.g. SQL).
-The tool does not invent experience or produce a finalized rewritten resume.
+In the extension, click **Saved answers** and choose demographic answers, or
+**Prefer not to say**. These stay in the browser and are never sent to Launchpad.
 
-**2:45–4:00: Tracker and Insights.**
-Click Tracker. Add an example with a company, title and application date.
-Change its status, refresh to show it was saved, open Insights, explore the status
-chart and response statistics, and export a CSV.
+## 3. The 6-minute walkthrough
 
-**4:00–5:00: Profile and personalization.**
-Open Account → Profile. Show sector, target titles, location, salary, and
-resume-upload controls. With the configured SQLite demo database, saving a
-profile stores preferences and a cached job-search query. With a DeepSeek key,
-the backend can synthesize queries; without one, it uses a deterministic
-fallback. Network/API access may affect live search, so show this last.
+**0:00–1:00: Jobs.**
+Show the feed tailored to the saved profile, with a match score on each job. Open a job,
+point out its matched and missing skills, and click **Add to tracker**.
 
-## 3. What is demo-ready vs. prototype-only
+**1:00–2:30: Autofill profile and tailored resume.**
+Click **Apply now (demo)**. Applicant Tools opens with the job already selected. Under
+**Your autofill profile**, show exactly what the extension will fill, and which values were
+read from the resume. Under **Tailor your resume**, click **Tailor my resume**. Show the job
+keywords the resume has and doesn't mention, what changed, and the new PDF on the page.
+Point out that it edits the original PDF, so the fonts and layout stay the same: the most
+relevant bullets move up, matching skills come first, and AI rewords a few bullets in the
+job's terms (with `DEEPSEEK_API_KEY` in `.env`). Every rewording is checked so it adds no new
+skill, number, or claim. Click a missing keyword you really have, then **Add 1 skill and tailor
+again** to add it to the skills line. Click **Use this resume for applications**, so the
+extension attaches it on the real application.
+
+**2:30–4:30: The extension on a real application.**
+Open a public Greenhouse or Lever application, such as a job from
+`https://boards.greenhouse.io/figma`. When the Launchpad panel appears, click **Autofill
+this application**. Show the filled fields, the dropdowns and Yes/No questions answered from
+saved answers, and the panel's report:
+
+- questions it left for you, such as "Why do you want this job?"
+- questions it never answers, such as date of birth or Social Security number
+
+**Do not click Submit.** Close the tab when you're done.
+
+**4:30–6:00: Tracker.**
+Open Tracker. Show the job added earlier, change its status, refresh to show it saved, open
+Insights, and export a CSV.
+
+## 4. What is demo-ready vs. prototype-only
 
 | Capability | State |
 | --- | --- |
-| Landing, sign-in/test profile, navigation | Implemented; verify visually |
-| Job feed + query filters | Implemented; includes local fallback |
-| Personalized job query | Backend database flow; API/LLM optional |
-| Autofill web page | Local sample form; no external submission |
-| Resume tailoring web page | Server-side text matching/review, not full rewrite |
-| Application tracker | Saved per user in the database; CSV export |
-| Multi-provider external jobs | API-dependent; do not rely on live calls |
-| Google OAuth | Integration exists; avoid as a demo dependency |
-| End-to-end form submissions | Not implemented |
+| Sign-in, profile, onboarding | Implemented; identity comes from the verified session |
+| Job feed, filters, match scores | Implemented; local listings are the fallback |
+| Tailored resume PDF | Implemented; edits the original PDF in place (same fonts and layout), reorders bullets and skills, AI rewording checked for new claims, adds only skills you confirm; you choose which resume to send |
+| Extension panel | Implemented on Greenhouse, Lever, Ashby, and more; Workday untested |
+| Application tracker | Saved per user; Add to tracker from jobs and the extension |
+| External job APIs | Network-dependent; Himalayas needs no key |
+| Google sign-in | Implemented; avoid as a demo dependency |
+| Submitting applications | Never automated, by design |
 
-## 4. Recovery plan
+## 5. Recovery plan
 
-- If login fails, verify the process was started with
-  `jac run --dev --profile test main.jac` and
-  `TURSO_DATABASE_URL="$HOME/launchpad-demo.db"`.
-- If a cached job query gives poor results, clear the two *visible* job-search
-  fields (on the presentation-hardening PR) or start with the local demo
-  listings before profile onboarding.
-- If external APIs stall or return no jobs, stay with local listings.
-- If a save action fails, confirm SQLite is configured and available.
-- If autofill or review has an issue, show the other feature and the README
-  rather than attempting real external job submissions.
-- Keep a clean restart option: stop server with Ctrl+C and rerun the above
-  command. Avoid deleting the demo DB if you want profile persistence.
+- **Login fails:** check that the server was started with `--profile test` and the
+  `TURSO_DATABASE_URL` above.
+- **A build error or a page that keeps reloading:** stop the server, run `jac clean --cache --force`, and start it again.
+- **External jobs are slow or empty:** stay with the local listings.
+- **The extension panel doesn't appear:** reload the extension, then the job page, and check
+  that it says it's connected. The toolbar popup's **Fill this page** works on any site.
+- **A dropdown isn't filled:** say so, and show the panel listing it for the user. Don't
+  improvise answers on a live form.
+- **Restarting:** stop the server with Ctrl+C and rerun the command above. Keep the demo
+  database if you want the profile to persist.
 
-## 5. Validation
+## 6. Validation
 
-Run `jac check main.jac` and `jac test -d tests -v` before the presentation.
-GitHub CI also compiles the page files, runs applicant Python tests, and smoke
-tests routes; HTTP smoke tests **do not** replace a browser click-through.
+Before presenting, run `jac check main.jac` and `jac test -d tests -v`. CI also runs the
+Python tests, the extension tests, identity checks, and a browser walkthrough on every pull
+request and push to `main`. Automated tests don't replace one live click-through.
 
-**Security:** Current public configuration includes committed authentication
-defaults, and identity resolution requires security hardening. Use localhost
-and fake applicant details only; do not deploy publicly as-is.
+**Security:** endpoints take the user only from the verified session. The Google OAuth client
+secret is still in `jac.toml` and git history and must be rotated before any public
+deployment. Use localhost and fake applicant details for the demo.
