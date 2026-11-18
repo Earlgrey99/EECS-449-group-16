@@ -6,6 +6,7 @@ state, e.g. "Mich" or "MI" suggests "Michigan".
 
 import csv;
 import os;
+import re;
 
 glob _CITIES_CACHE: list[dict[str, any]] = [];
 glob _CITIES_LOADED: bool = False;
@@ -48,6 +49,35 @@ def search_states(query: str) -> list[str] {
     }
     return matches[:MAX_STATE_MATCHES];
 }
+
+
+"""True when a job's location is inside a place someone picked.
+
+    "Columbus, OH" matches "Columbus, OH, USA"
+    "Michigan"     matches "Detroit, MI" and "Ann Arbor, Michigan"
+    "Remote"       matches any job whose location says remote
+"""
+def location_matches(target: str, job_location: str) -> bool {
+    place = (target or "").strip().lower();
+    job_loc = (job_location or "").strip().lower();
+    if not place or not job_loc {
+        return False;
+    }
+    if "remote" in place {
+        return "remote" in job_loc;
+    }
+    if place in job_loc or job_loc in place {
+        return True;
+    }
+    # A whole state: look for its two-letter code after a comma, like ", MI".
+    for (state_code, full_name) in US_STATES.items() {
+        if full_name.lower() == place {
+            return re.search(r",\s*" + state_code.lower() + r"\b", job_loc) is not None;
+        }
+    }
+    return False;
+}
+
 
 def _pop_key(item: dict[str, any]) -> int {
     val = item.get("pop", 0);
