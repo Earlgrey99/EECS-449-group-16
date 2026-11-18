@@ -1,4 +1,4 @@
-import from "@jac/runtime" { jacIsLoggedIn, Link, Navigate, useLocation }
+import from "@jac/runtime" { jacIsLoggedIn, Link, Navigate, useLocation, useNavigate }
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
