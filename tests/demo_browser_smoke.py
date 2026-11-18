@@ -41,7 +41,9 @@ def main() -> int:
             role.wait_for(timeout=35000)
             role.click()
 
-            page.get_by_role("button", name="Apply now", exact=True).click()
+            # Local listings have no employer link, so there's no Apply now, only tailoring.
+            assert page.get_by_role("link", name="Apply now").count() == 0
+            page.get_by_role("button", name="Tailor my resume", exact=True).click()
             page.wait_for_url("**/tools?job=3", timeout=20000)
             page.get_by_role("heading", name="Application tools").wait_for(timeout=20000)
 

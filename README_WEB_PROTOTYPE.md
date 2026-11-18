@@ -18,8 +18,8 @@ jac run --dev main.jac
 ```
 
 Visit http://localhost:8000, sign in using your test account, and open
-**Applicant tools** in the top navigation or use **Apply now** in the sample
-job feed. The page routes are `/tools` and `/tracker`.
+**Applicant tools** in the top navigation or use **Tailor my resume** on a job in
+the feed. **Apply now** opens the employer's application in a new tab. The page routes are `/tools` and `/tracker`.
 
 ## Application tracker
 

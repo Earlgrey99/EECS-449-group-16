@@ -52,7 +52,8 @@
         "https://*.icims.com/*",
         "https://*.jobvite.com/*",
         "https://*.workable.com/*",
-        "https://*.bamboohr.com/*"
+        "https://*.bamboohr.com/*",
+        "http://localhost:8000/static/demo-application.html*"
       ],
       "js": [
         "autofill.js",

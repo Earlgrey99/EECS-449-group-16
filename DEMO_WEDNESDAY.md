@@ -64,7 +64,8 @@ Show the feed tailored to the saved profile, with a match score on each job. Ope
 point out its matched and missing skills, and click **Add to tracker**.
 
 **1:00–2:30: Autofill profile and tailored resume.**
-Click **Apply now**. Applicant Tools opens with the job already selected. Under
+Click **Tailor my resume**. Applicant Tools opens with the job already selected. (**Apply now**
+opens the employer's real application in a new tab.) Under
 **Your autofill profile**, show exactly what the extension will fill, and which values were
 read from the resume. Under **Tailor your resume**, click **Tailor my resume**. Show the job
 keywords the resume has and doesn't mention, what changed, and the new PDF on the page.

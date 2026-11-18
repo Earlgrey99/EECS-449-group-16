@@ -531,7 +531,17 @@ def:pub JobSearchFeed -> JsxElement {
         }
     }
 
-    def apply_to(job: any) {
+    # The employer's application page, or "" when the listing has none.
+    # Links on this site (like the class demo form) start with "/".
+    def application_link(job: any) -> str {
+        link = str(job.get("link") or "").strip() if job else "";
+        if link.startswith("https://") or link.startswith("http://") or link.startswith("/") {
+            return link;
+        }
+        return "";
+    }
+
+    def tailor_for(job: any) {
         try {
             localStorage.setItem("jaccit_selected_job", JSON.stringify(job));
             nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))));
@@ -907,10 +917,13 @@ def:pub JobSearchFeed -> JsxElement {
                                 </div>
                             </CardContent>
                             <CardFooter className="shrink-0 flex flex-wrap items-center gap-3">
-                                <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now</Button>
+                                {bool(application_link(sel)) and <Button asChild className="shadow-sm">
+                                    <a href={application_link(sel)} target="_blank" rel="noopener noreferrer">Apply now <span aria-hidden="true">&rarr;</span></a>
+                                </Button>}
+                                <Button variant={("outline" if application_link(sel) else "default")} onClick={lambda { tailor_for(sel); }}>Tailor my resume</Button>
                                 <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
                                 <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
-                                {is_jooble_job(sel) and <a
+                                {(is_jooble_job(sel) and get_jooble_link(sel) != application_link(sel)) and <a
                                     href={get_jooble_link(sel)}
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -919,6 +932,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     <span>Full description</span>
                                     <span aria-hidden="true">&rarr;</span>
                                 </a>}
+                                {(not application_link(sel)) and <p className="w-full text-xs text-muted-foreground">This listing has no application link. You can still tailor your resume for it.</p>}
                                 {bool(track_message) and <p role="alert" className="w-full text-sm text-destructive">{track_message}</p>}
                             </CardFooter>
                         </Card>}

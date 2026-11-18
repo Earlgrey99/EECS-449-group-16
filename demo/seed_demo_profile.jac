@@ -18,6 +18,7 @@ import from db {
     save_job_preferences_row, save_tailored_resume, create_resume, list_resumes_by_user,
     delete_resume, list_applications_by_user, delete_application, get_db_connection
 }
+import from services.resume_profile { _save_resume_profile }
 
 glob RESUME_FILE: str = "demo/shashank_sekhar_resume.pdf";
 glob RESUME_TITLE: str = "Shashank_Sekhar_Resume.pdf";
@@ -92,6 +93,43 @@ with entry {
     }
     content = "data:application/pdf;base64," + base64.b64encode(pdf).decode("ascii");
     create_resume(user_id=user_id, title=RESUME_TITLE, content=content, conn=conn);
+
+    # The profile page's "Your Resume Details", saved as clean sections so it
+    # doesn't depend on how well the PDF reads.
+    sections = _save_resume_profile(user_id, {
+        "experience": [
+            {
+                "title": "Software Engineering Intern", "company": "Lakeshore Health",
+                "dates": "May 2025 - Aug. 2025",
+                "description": "Redesigned the patient check-in page in React, cutting average check-in time from 4 minutes to 90 seconds\nFixed 30 accessibility issues flagged in an audit of the scheduling app\nWrote unit tests in Jest that raised front-end test coverage from 35% to 70%\nBuilt a Python ETL job that moved nightly appointment data from CSV exports into PostgreSQL\nWrote SQL checks that caught duplicate patient records before they reached the reporting database"
+            },
+            {
+                "title": "Instructional Aide, Intro to Programming", "company": "University of Michigan",
+                "dates": "Jan. 2024 - Present",
+                "description": "Lead a weekly lab section of 30 students and hold 4 hours of office hours a week\nWrote 12 autograder test suites for C++ programming projects\nBuilt a Python script that pulls grades from the course API and flags students who are falling behind"
+            }
+        ],
+        "education": [
+            {
+                "school": "University of Michigan",
+                "degree": "Bachelor of Science in Engineering, Computer Science",
+                "dates": "Aug. 2023 - May 2027", "gpa": "3.7"
+            }
+        ],
+        "skills": [
+            "Java", "C++", "JavaScript", "HTML/CSS", "Python", "SQL", "React", "Node.js", "Express",
+            "Jest", "pandas", "Git", "VS Code", "Figma", "Docker", "AWS", "Linux"
+        ],
+        "links": {
+            "github": "https://github.com/shashanksekhar-demo",
+            "linkedin": "https://linkedin.com/in/shashank-sekhar-demo",
+            "portfolio": "", "other": []
+        }
+    }, conn=conn);
+    if not sections["ok"] {
+        print("Couldn't save the resume details: " + str(sections.get("error")));
+        sys.exit(1);
+    }
 
     conn.close();
     print(f"Shashank Sekhar is ready in {url} (account id {user_id}).", flush=True);

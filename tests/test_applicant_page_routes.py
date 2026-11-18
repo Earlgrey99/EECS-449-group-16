@@ -37,6 +37,15 @@ class PageRouteTests(unittest.TestCase):
     def test_the_job_feed_has_a_page(self):
         self.assertIn("/find-jobs", page_paths())
 
+    def test_demo_listing_applies_through_a_served_form(self):
+        # Files in assets/ are served at /static/<name>, on the same port as the app.
+        jobs = (ROOT / "services" / "jobs.jac").read_text()
+        links = re.findall(r'"link": "(/static/[^"]+)"', jobs)
+        self.assertEqual(links, ["/static/demo-application.html"])
+        self.assertTrue((ROOT / "assets" / "demo-application.html").is_file())
+        manifest = (ROOT / "extension" / "manifest.json").read_text()
+        self.assertIn("http://localhost:8000/static/demo-application.html*", manifest)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -292,6 +292,16 @@ def render_to_fit(resume: Resume, max_pages: int | None) -> bytes:
 
 
 def pdf_text(data: bytes) -> str:
+    # PyMuPDF keeps kerned LaTeX words whole ("AWS"); pypdf can split them ("A WS").
+    try:
+        import pymupdf
+
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            text = "\n".join(page.get_text() for page in doc)
+        if text.strip():
+            return text
+    except Exception:
+        pass
     from pypdf import PdfReader
 
     return "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(data)).pages)
