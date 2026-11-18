@@ -2,7 +2,14 @@
 
 import datetime;
 import os;
-import from db { init_db, sync_oauth_user, get_user_by_oauth_id, get_user_by_email, ensure_test_user }
+import from db {
+    init_db,
+    sync_oauth_user,
+    get_user_by_oauth_id,
+    get_user_by_email,
+    is_placeholder_oauth_email,
+    ensure_test_user
+}
 import from jaclang.project.config { get_config }
 import from jaclang.server.identity.config { signing_secret, signing_algorithm }
 import from jaclang.server.identity.user_manager { UserManager }
@@ -205,7 +212,11 @@ def _caller_from_identity(identity: dict[str, any], conn: any = None) -> dict[st
     return {
         **identity,
         "ok": True,
-        "email": str(app_user["email"]) if app_user else str(identity.get("email") or ""),
+        "email": (
+            ""
+            if app_user and is_placeholder_oauth_email(str(app_user.get("email") or ""))
+            else (str(app_user["email"]) if app_user else str(identity.get("email") or ""))
+        ),
         "oauth_id": str(identity["user_id"]) if is_sso else None,
         "auth_provider": "google" if is_sso else "local",
         "app_user": app_user
@@ -225,8 +236,8 @@ def _public_user(user: dict[str, any] | None) -> dict[str, any] | None {
 }
 
 def _sync_caller(caller: dict[str, any], conn: any = None) -> dict[str, any] {
-    # A Google user gets a row during onboarding, once they provide an email.
-    if not caller.get("email") {
+    # Keep Google users' app data tied to their OAuth identity before onboarding.
+    if not caller.get("email") and not caller.get("oauth_id") {
         return {"ok": True, "user": None};
     }
     try {

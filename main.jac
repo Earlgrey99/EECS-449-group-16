@@ -9,6 +9,12 @@ import sys;
 import cli;
 import from services.applicant_demo { review_resume_text, get_applicant_details, tailor_resume_pdf, use_tailored_resume, use_default_resume }
 import from services.auth_sync { sync_user_session, get_test_user_session }
+import from services.career_navigator {
+    list_career_chats,
+    get_career_chat_details,
+    send_career_message,
+    remove_career_chat
+}
 import from services.compatibility { get_resume_match_scores }
 import from services.jobs { list_jobs, get_user_tailored_jobs, search_jobs }
 import from services.locations { search_cities }
@@ -27,7 +33,10 @@ import from services.job_preferences { get_job_preferences, save_job_preferences
 import from services.tracker {
     list_tracker_applications,
     add_tracker_application,
+    get_tracker_status_options,
+    save_tracker_status_options,
     set_tracker_status,
+    edit_tracker_application,
     remove_tracker_application
 }
 

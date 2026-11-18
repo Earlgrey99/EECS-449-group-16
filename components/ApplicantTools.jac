@@ -7,8 +7,9 @@ import from ..services.jobs { list_jobs }
 
 def:pub ApplicantTools() -> JsxElement {
     location = useLocation();
+    nav = useNavigate();
     job_id = decodeURIComponent(location.search.replace("?job=", "").split("&")[0]);
-    if not jacIsLoggedIn() {
+    if not jacIsLoggedIn() and not globalThis.__DEV_AUTO_LOGIN__ {
         return <Navigate to="/login" replace={True} />;
     }
 
@@ -100,6 +101,17 @@ def:pub ApplicantTools() -> JsxElement {
         job_description = (plain_text(desc) + ("\n\nSkills: " + tags if tags else ""))[:12000];
     }
 
+    def use_application_job(job: any) {
+        title = str(job.get("title") or "");
+        desc = str(job.get("desc") or job.get("description") or "");
+        tags = str(job.get("tags") or "");
+        application_role = title;
+        application_company = str(job.get("company") or "");
+        application_pay = str(job.get("salary") or job.get("salary_text") or "");
+        application_description = plain_text(desc);
+        use_job(title, desc, tags);
+    }
+
     # The jobs page passes the selected job along, which covers external listings.
     # A reloaded or shared link may not have it, so fall back to the built-in jobs.
     async can with entry {
@@ -108,19 +120,33 @@ def:pub ApplicantTools() -> JsxElement {
         }
         did_init_tools = True;
         await load_saved_details();
+        selected_job_raw = localStorage.getItem("jaccit_selected_job");
+        has_selected_job = False;
+        if selected_job_raw {
+            try {
+                selected_job: any = JSON.parse(selected_job_raw);
+                use_application_job(selected_job);
+                localStorage.removeItem("jaccit_selected_job");
+                has_selected_job = True;
+            } except Exception {
+                job_notice = "We couldn't load that job. Paste its description below.";
+            }
+        }
         passed: any = location.state.get("job") if location.state else None;
         if passed {
-            use_job(str(passed.get("title") or ""), str(passed.get("desc") or ""), str(passed.get("tags") or ""));
+            use_application_job(passed);
             return;
         }
         if job_id {
             available_jobs = await list_jobs();
             for j in available_jobs {
                 if str(j["id"]) == job_id {
-                    use_job(str(j["title"]), str(j["desc"]), str(j["tags"]));
+                    use_application_job(j);
                     return;
                 }
             }
+        }
+        if not passed and not has_selected_job {
             job_notice = "We couldn't load that job. Paste its description below.";
         }
         if not job_from_feed {
