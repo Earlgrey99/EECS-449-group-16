@@ -1,4 +1,4 @@
-"""Fill the test-profile account with Alex Morgan, a made-up applicant for the class demo.
+"""Fill the test-profile account with a demo profile for Shashank Sekhar (made-up details) for the class demo.
 
 Run from the repo root, with the same TURSO_DATABASE_URL the server will use:
 
@@ -19,8 +19,8 @@ import from db {
     delete_resume, list_applications_by_user, delete_application, get_db_connection
 }
 
-glob RESUME_FILE: str = "demo/alex_morgan_resume.pdf";
-glob RESUME_TITLE: str = "Alex_Morgan_Resume.pdf";
+glob RESUME_FILE: str = "demo/shashank_sekhar_resume.pdf";
+glob RESUME_TITLE: str = "Shashank_Sekhar_Resume.pdf";
 
 with entry {
     url = str(os.environ.get("TURSO_DATABASE_URL") or "");
@@ -35,8 +35,8 @@ with entry {
 
     save_user_profile(
         user_id=user_id,
-        first_name="Alex",
-        last_name="Morgan",
+        first_name="Shashank",
+        last_name="Sekhar",
         location="Ann Arbor, MI, Remote",
         sector="Technology & Software",
         job_titles="Data Engineer, Software Engineer, Data Analyst",
@@ -49,8 +49,8 @@ with entry {
         user_id=user_id,
         phone="(555) 555-0142",
         city="Ann Arbor, MI",
-        linkedin="https://linkedin.com/in/alex-morgan-demo",
-        github="https://github.com/alexmorgan-demo",
+        linkedin="https://linkedin.com/in/shashank-sekhar-demo",
+        github="https://github.com/shashanksekhar-demo",
         portfolio="",
         conn=conn
     );
@@ -94,7 +94,7 @@ with entry {
     create_resume(user_id=user_id, title=RESUME_TITLE, content=content, conn=conn);
 
     conn.close();
-    print(f"Alex Morgan is ready in {url} (account id {user_id}).", flush=True);
+    print(f"Shashank Sekhar is ready in {url} (account id {user_id}).", flush=True);
     # The Jac runtime keeps a background thread alive, so exit explicitly.
     os._exit(0);
 }

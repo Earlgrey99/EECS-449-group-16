@@ -6,18 +6,18 @@ This guide sets up a laptop to show two Launchpad features to the class:
 2. **Application autofill.** The Chrome extension fills a job application from the
    Launchpad profile.
 
-Everything uses **Alex Morgan, a made-up applicant**, and a separate demo database, so
+Everything uses **a demo profile for Shashank Sekhar with made-up details**, and a separate demo database, so
 no real resume or personal details appear on screen.
 
 ## What's in `demo/`
 
 | File | What it's for |
 |---|---|
-| `alex_morgan_resume.pdf` | Alex's one-page resume (built from `alex_morgan_resume.tex`) |
+| `shashank_sekhar_resume.pdf` | Shashank's one-page resume (built from `shashank_sekhar_resume.tex`) |
 | `job_posting.txt` | A Data Engineering Intern posting to paste into the enhancer |
-| `seed_demo_profile.jac` | Fills the demo account with Alex's profile and resume |
+| `seed_demo_profile.jac` | Fills the demo account with Shashank's profile and resume |
 | `sample_application.html` | An offline practice application form, for the autofill demo |
-| `backup/before.png`, `backup/after.png`, `backup/Alex_Morgan_Resume_tailored.pdf` | Screenshots and output to show if the live demo fails |
+| `backup/before.png`, `backup/after.png`, `backup/Shashank_Sekhar_Resume_tailored.pdf` | Screenshots and output to show if the live demo fails |
 
 ---
 
@@ -44,7 +44,7 @@ DEEPSEEK_API_KEY=sk-...
 `.env` is ignored by git. Never commit it. Don't put `TURSO_*` lines in it for the
 demo, or Launchpad will use the shared online database instead of the demo one.
 
-### 3. Fill the demo account with Alex's profile
+### 3. Fill the demo account with Shashank's profile
 
 The demo uses its own database file, so your real profile isn't touched. Run both
 lines in the same terminal:
@@ -57,8 +57,8 @@ export TURSO_DATABASE_URL="$HOME/launchpad-class-demo.db"
 jac run --no-takeover demo/seed_demo_profile.jac
 ```
 
-It prints `Alex Morgan is ready in .../launchpad-class-demo.db`. Run it again at any
-time to reset Alex: his resume goes back to the original, the tailored copy is cleared
+It prints `Shashank Sekhar is ready in .../launchpad-class-demo.db`. Run it again at any
+time to reset Shashank: the resume goes back to the original, the tailored copy is cleared
 and the tracker is emptied.
 
 ### 4. Start Launchpad
@@ -81,7 +81,7 @@ something else is already using 8000: stop it and start again.
 2. Pin **Launchpad Autofill** to the toolbar (puzzle-piece icon, then the pin).
 3. Open <http://localhost:8000/login>. The test account signs in by itself.
 4. Click the Launchpad toolbar icon, then **Connect to Launchpad**. It should say
-   **Alex Morgan** and show `Alex_Morgan_Resume.pdf`.
+   **Shashank Sekhar** and show `Shashank_Sekhar_Resume.pdf`.
 
 If it shows a different name, the extension is still connected to another account:
 click **Disconnect**, then **Connect to Launchpad** again.
@@ -100,7 +100,7 @@ The form is then at <http://localhost:8090/sample_application.html>.
 
 Run the whole script in Part 3. Then go back to the first terminal, press
 <kbd>Ctrl</kbd>+<kbd>C</kbd>, run step 3's seed command again, and start Launchpad
-again with step 4. Alex is back to his starting state for the real demo.
+again with step 4. Shashank is back to the starting state for the real demo.
 
 ---
 
@@ -112,7 +112,7 @@ again with step 4. Alex is back to his starting state for the real demo.
    - <http://localhost:8090/sample_application.html>
    - `demo/backup/before.png` and `after.png`, in Preview, in case you need them.
 3. Open `demo/job_posting.txt` in a text editor and select all of it, ready to paste.
-4. Click the extension icon and check that it still says **Alex Morgan**.
+4. Click the extension icon and check that it still says **Shashank Sekhar**.
 5. Zoom Chrome to about 125% (<kbd>Cmd</kbd>+<kbd>+</kbd>) so the back row can read it.
 6. Turn on Do Not Disturb, and close other apps and tabs.
 
@@ -120,10 +120,10 @@ again with step 4. Alex is back to his starting state for the real demo.
 
 ## Part 3: The demo script (about 6 minutes)
 
-### Introduce Alex (30 seconds)
+### Introduce Shashank (30 seconds)
 
-> "This is Alex Morgan, a made-up CS student. Alex has a normal one-page resume and is
-> applying for a Data Engineering internship."
+> "This is a demo profile for Shashank Sekhar. The resume and contact details are made up.
+> Shashank has a normal one-page resume and is applying for a Data Engineering internship."
 
 On <http://localhost:8000/tools>, scroll through **1. Your autofill profile**.
 
@@ -140,7 +140,7 @@ On <http://localhost:8000/tools>, scroll through **1. Your autofill profile**.
 
 Walk through the result from top to bottom:
 
-- **Job keywords your resume has:** "Alex already has Python, SQL, PostgreSQL, ETL,
+- **Job keywords your resume has:** "Shashank already has Python, SQL, PostgreSQL, ETL,
   pandas and Docker."
 - **What changed:**
   - "In each job, the bullet that best matches the posting moved to the top. The Python
@@ -167,7 +167,7 @@ Then show the missing keywords:
 
 6. Under **Job keywords your resume doesn't mention**, click **+ spark**.
 
-   > "Launchpad never adds a skill on its own. Alex says they really do know Spark, so we
+   > "Launchpad never adds a skill on its own. Shashank really does know Spark, so we
    > confirm it."
 
 7. Click **Add 1 skill and tailor again**. The list now says **Added Spark to Developer
@@ -184,7 +184,7 @@ Then show the missing keywords:
    > "This is a typical job application: contact info, education, the yes/no
    > questions, a resume upload, and a few things we should never fill in."
 
-2. Click the Launchpad toolbar icon. The popup shows Alex and the tailored resume.
+2. Click the Launchpad toolbar icon. The popup shows Shashank and the tailored resume.
 3. Click **Fill this page**. Clicking the icon gives the extension access to this one
    tab, so no permission prompt appears.
 4. Click the page to close the popup, then scroll down the form:
@@ -196,15 +196,15 @@ Then show the missing keywords:
      tailored.
 5. Point at what stayed empty:
 
-   > "'Why do you want to work here' is left for Alex to write. Date of birth and Social
+   > "'Why do you want to work here' is left for Shashank to write. Date of birth and Social
    > Security number are never filled, by design. Gender and veteran status are only
-   > filled if Alex chooses answers in the extension's private Saved answers, and those
+   > filled if Shashank chooses answers in the extension's private Saved answers, and those
    > never leave the browser."
 
 6. Click the toolbar icon again to show the report: **Filled. Please review (19)**,
    **Please answer these yourself**, and **Launchpad never answers these**.
 
-   > "It never clicks Submit. Alex reviews everything and submits it himself."
+   > "It never clicks Submit. Shashank reviews everything and submits it."
 
 The email field shows `testuser@example.com`. That's the built-in test account's
 email, which autofill always takes from the account. Mention it if anyone asks.
@@ -223,12 +223,12 @@ without submitting**.
 | Problem | What to do |
 |---|---|
 | The AI rewording doesn't appear, or the note says AI was unavailable | Carry on. Reordering still works without AI. Mention that rewording needs the API key and network, and show `backup/after.png`. |
-| Tailoring fails or the preview is blank | Show `backup/before.png` and `backup/after.png` side by side, or open `backup/Alex_Morgan_Resume_tailored.pdf`. |
+| Tailoring fails or the preview is blank | Show `backup/before.png` and `backup/after.png` side by side, or open `backup/Shashank_Sekhar_Resume_tailored.pdf`. |
 | The extension shows the wrong person, or "sign in first" | Keep a `localhost:8000` tab open, click **Disconnect**, then **Connect to Launchpad**. |
 | **Fill this page** does nothing | Reload the form tab, then click the icon and **Fill this page** again. On `chrome://extensions`, reload the extension if needed. |
 | The resume isn't attached | Make sure **Include resume** is ticked in the popup. |
 | A build error, or a page that keeps reloading | Press <kbd>Ctrl</kbd>+<kbd>C</kbd> and rerun step 4. It clears the cache first. |
-| Alex's resume or tracker is messy from rehearsal | Stop Launchpad, rerun the seed command in step 3, start Launchpad again. |
+| Shashank's resume or tracker is messy from rehearsal | Stop Launchpad, rerun the seed command in step 3, start Launchpad again. |
 | The form page won't load | The second terminal from step 6 isn't running. Start it again. |
 
 ## After the demo
