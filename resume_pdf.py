@@ -1,18 +1,43 @@
 """Tailor a resume PDF to a job and produce a new PDF (issue #39).
 
-Tailoring only reorders what the resume already says:
+PDFs are edited in place by resume_inplace.py, keeping their fonts and layout. This
+module reads resumes as text, matches keywords, and, for text resumes or PDFs that
+can't be edited, lays out a new PDF that only reorders what the resume already says:
   - within each job or project, the bullets most relevant to the posting move first
   - within each skills line, skills the posting asks for move first
-Nothing is added, removed, or reworded, and section order stays the same.
 """
 from __future__ import annotations
 
 import base64
+import importlib.util
 import io
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 
 from resume_tailoring import tokens
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_sibling(name: str):
+    """Import a module that sits next to this file.
+
+    The Jac server loads this file through its own importer, and a plain "import x"
+    from here can't find new sibling modules there, so they are loaded by path.
+    """
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, os.path.join(_HERE, name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
 
 MAX_PDF_BYTES = 5 * 1024 * 1024
 MAX_JOB_CHARS = 12000
@@ -117,6 +142,21 @@ def _job_weights(job_text: str) -> dict[str, int]:
     return weights
 
 
+def keyword_match(resume_text: str, job_text: str, limit: int = 12) -> dict[str, list[str]]:
+    """The job's most frequent keywords, split by whether the resume already has them."""
+    weights = _job_weights(job_text)
+    order = {word: index for index, word in reversed(list(enumerate(tokens(job_text))))}
+    ranked = sorted(
+        (word for word in weights if not word.replace(".", "").isdigit()),
+        key=lambda word: (-weights[word], order[word]),
+    )
+    have = set(tokens(resume_text))
+    return {
+        "matched": [word for word in ranked if word in have][:limit],
+        "missing": [word for word in ranked if word not in have][: limit // 2],
+    }
+
+
 def _score(text: str, weights: dict[str, int]) -> int:
     return sum(weights.get(word, 0) for word in set(tokens(text)))
 
@@ -177,7 +217,8 @@ def _latin1(text: str) -> str:
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
-def render_pdf(resume: Resume) -> bytes:
+def render_pdf(resume: Resume, scale: float = 1.0) -> bytes:
+    """Lay out the resume. scale below 1 shrinks the type, spacing, and margins together."""
     from xml.sax.saxutils import escape
 
     from reportlab.lib.colors import HexColor
@@ -191,12 +232,13 @@ def render_pdf(resume: Resume) -> bytes:
         return Paragraph(escape(_latin1(text)), style)
 
     ink = HexColor("#1c2521")
-    name = ParagraphStyle("name", fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_CENTER, textColor=ink)
-    contact = ParagraphStyle("contact", fontName="Helvetica", fontSize=9.5, leading=13, alignment=TA_CENTER, textColor=ink)
-    heading = ParagraphStyle("heading", fontName="Helvetica-Bold", fontSize=11, leading=14, spaceBefore=8, textColor=ink)
-    entry_first = ParagraphStyle("entry", fontName="Helvetica-Bold", fontSize=10, leading=13, spaceBefore=4, textColor=ink)
-    entry_rest = ParagraphStyle("entry_rest", fontName="Helvetica", fontSize=10, leading=13, textColor=ink)
-    bullet = ParagraphStyle("bullet", fontName="Helvetica", fontSize=10, leading=13, textColor=ink)
+    k = scale
+    name = ParagraphStyle("name", fontName="Helvetica-Bold", fontSize=18 * k, leading=22 * k, alignment=TA_CENTER, textColor=ink)
+    contact = ParagraphStyle("contact", fontName="Helvetica", fontSize=9.5 * k, leading=13 * k, alignment=TA_CENTER, textColor=ink)
+    heading = ParagraphStyle("heading", fontName="Helvetica-Bold", fontSize=11 * k, leading=14 * k, spaceBefore=8 * k, textColor=ink)
+    entry_first = ParagraphStyle("entry", fontName="Helvetica-Bold", fontSize=10 * k, leading=13 * k, spaceBefore=4 * k, textColor=ink)
+    entry_rest = ParagraphStyle("entry_rest", fontName="Helvetica", fontSize=10 * k, leading=13 * k, textColor=ink)
+    bullet = ParagraphStyle("bullet", fontName="Helvetica", fontSize=10 * k, leading=13 * k, textColor=ink)
 
     story = []
     if resume.header:
@@ -211,18 +253,42 @@ def render_pdf(resume: Resume) -> bytes:
             if entry.bullets:
                 block.append(ListFlowable(
                     [ListItem(para(text, bullet), leftIndent=12) for text in entry.bullets],
-                    bulletType="bullet", start="•", bulletFontName="Helvetica", leftIndent=12, bulletFontSize=11,
+                    bulletType="bullet", start="•", bulletFontName="Helvetica", leftIndent=12, bulletFontSize=11 * k,
                 ))
             story.append(KeepTogether(block))
             block = []
         story.extend(block)
-        story.append(Spacer(1, 2))
+        story.append(Spacer(1, 2 * k))
 
     out = io.BytesIO()
-    doc = SimpleDocTemplate(out, pagesize=letter, leftMargin=0.7 * inch, rightMargin=0.7 * inch,
-                            topMargin=0.6 * inch, bottomMargin=0.6 * inch, title="Resume", author="")
+    # Margins narrow with the type: 0.7 in at full size, 0.5 in at the smallest scale.
+    margin = max(0.7 - (1 - k), 0.5) * inch
+    doc = SimpleDocTemplate(out, pagesize=letter, leftMargin=margin, rightMargin=margin,
+                            topMargin=min(margin, 0.6 * inch), bottomMargin=min(margin, 0.6 * inch), title="Resume", author="")
     doc.build(story)
     return out.getvalue()
+
+
+def page_count(data: bytes) -> int:
+    from pypdf import PdfReader
+
+    return len(PdfReader(io.BytesIO(data)).pages)
+
+
+# Smallest scale tried: 10 pt body text becomes 8 pt, still readable on a resume.
+SCALES = (1.0, 0.95, 0.9, 0.85, 0.8)
+
+
+def render_to_fit(resume: Resume, max_pages: int | None) -> bytes:
+    """Render at full size, shrinking a little at a time until it fits in max_pages."""
+    pdf = render_pdf(resume)
+    if not max_pages:
+        return pdf
+    for scale in SCALES[1:]:
+        if page_count(pdf) <= max_pages:
+            break
+        pdf = render_pdf(resume, scale)
+    return pdf
 
 
 def pdf_text(data: bytes) -> str:
@@ -241,8 +307,19 @@ def resume_bytes(content: str) -> tuple[bytes, str]:
     return data, ("pdf" if data.startswith(b"%PDF") else "text")
 
 
-def tailor_resume(content: str, job_text: str) -> dict:
-    """Tailor a resume (PDF or text) to a job. Returns the new PDF and a list of changes."""
+def _job_casing(skill: str, job_text: str) -> str:
+    """The skill as the job posting writes it ("Kubernetes", not "kubernetes")."""
+    clean = re.sub(r"\s+", " ", str(skill or "")).strip()[:40]
+    match = re.search(r"(?<![\w+#])" + re.escape(clean) + r"(?![\w+#])", job_text, re.I)
+    return match.group(0) if match else clean
+
+
+def tailor_resume(content: str, job_text: str, job_title: str = "", extra_skills: list[str] | None = None, use_ai: bool = False) -> dict:
+    """Tailor a resume (PDF or text) to a job. Returns the new PDF and a list of changes.
+
+    A PDF is edited in place (resume_inplace), so its fonts and layout stay the same. A
+    text resume, or a PDF that can't be edited, is laid out again from its text.
+    """
     if not str(job_text or "").strip():
         raise ValueError("Paste the job description first.")
     if len(job_text) > MAX_JOB_CHARS:
@@ -251,8 +328,44 @@ def tailor_resume(content: str, job_text: str) -> dict:
     if len(data) > MAX_PDF_BYTES:
         raise ValueError("The resume file is larger than 5 MB.")
     text = pdf_text(data) if kind == "pdf" else data.decode("utf-8", errors="replace")
+    skills = [_job_casing(skill, job_text) for skill in (extra_skills or [])[:10] if str(skill or "").strip()]
+    if kind == "pdf":
+        resume_ai = load_sibling("resume_ai")
+        resume_inplace = load_sibling("resume_inplace")
+
+        rewriter = None
+        ai = "off"
+        if use_ai and resume_ai.has_key():
+            def rewriter(candidates):
+                return resume_ai.suggest_rewrites(candidates, job_title, job_text)
+        elif use_ai:
+            ai = "no_key"
+        try:
+            result = resume_inplace.tailor_pdf(data, job_text, skills, rewriter)
+        except ValueError:
+            raise
+        except Exception:
+            result = None
+        if result is not None:
+            return {
+                "pdf": result["pdf"],
+                "changes": result["changes"],
+                "notes": result["notes"],
+                "ai": result["ai"] if rewriter is not None else ai,
+                "method": "in_place",
+                "keywords": keyword_match(text, job_text),
+            }
     resume = parse_resume(text)
     if not resume.sections:
         raise ValueError("Couldn't find resume sections such as Experience or Education. Try a PDF exported from a document, not a scan.")
     tailored, changes = tailor(resume, job_text)
-    return {"pdf": render_pdf(tailored), "changes": changes, "sections": [section.title for section in tailored.sections]}
+    # Keep the original page count, so a one-page resume stays one page.
+    return {
+        "pdf": render_to_fit(tailored, page_count(data) if kind == "pdf" else None),
+        "changes": changes,
+        "notes": ["Your PDF couldn't be edited directly, so this copy was laid out again from its text."] if kind == "pdf" else [],
+        "ai": "off",
+        "method": "rebuilt",
+        "sections": [section.title for section in tailored.sections],
+        "keywords": keyword_match(text, job_text),
+    }

@@ -60,7 +60,7 @@ def:pub LoginPage -> JsxElement {
         last_processed_login_query = search;
         if not search {
             if jacIsLoggedIn() {
-                nav("/jobs");
+                nav("/find-jobs");
                 return;
             }
             try {
@@ -68,7 +68,7 @@ def:pub LoginPage -> JsxElement {
                 is_dev_logged_out = logged_out_flag;
                 if not logged_out_flag {
                     if await authorize_test_session() {
-                        nav("/jobs");
+                        nav("/find-jobs");
                         return;
                     }
                 }
@@ -127,7 +127,7 @@ def:pub LoginPage -> JsxElement {
             if not is_done {
                 nav("/me");
             } else {
-                nav("/jobs");
+                nav("/find-jobs");
             }
         }
     }
@@ -158,7 +158,7 @@ def:pub LoginPage -> JsxElement {
             } except Exception {}
             if await authorize_test_session() {
                 busy = False;
-                nav("/jobs");
+                nav("/find-jobs");
             } else {
                 message = "Development sign-in was unavailable. Check test profile and database settings.";
                 busy = False;
@@ -219,7 +219,7 @@ def:pub LoginPage -> JsxElement {
             if mode == "signup" or not is_done_local {
                 nav("/me");
             } else {
-                nav("/jobs");
+                nav("/find-jobs");
             }
         } except Exception {
             message = "Something went wrong. Please try again.";

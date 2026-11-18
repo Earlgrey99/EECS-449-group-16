@@ -11,7 +11,7 @@ import from "@hugeicons/core-free-icons" {
 import from .ui.button { Button }
 import from .ui.input { Input }
 import from .ui.badge { Badge }
-import from .ui.card { Card, CardContent }
+import from .ui.card { Card, CardContent, CardFooter }
 import from .ui.empty { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent }
 import from .ui.spinner { Spinner }
 import from .TopNav { TopNav }
@@ -87,6 +87,36 @@ def:pub JobCard(
             </div>
         </CardContent>
     </Card>;
+}
+
+def is_jooble_job(j: dict[str, any] | None = None) -> bool {
+    if not j {
+        return False;
+    }
+    src = str(j.get('source') or j.get('site') or '').strip().lower();
+    if src == 'jooble' {
+        return True;
+    }
+    link = str(j.get('link') or '').strip().lower();
+    if 'jooble.org' in link or 'jooble.' in link {
+        return True;
+    }
+    return False;
+}
+
+def get_jooble_link(j: dict[str, any] | None = None) -> str {
+    if not j {
+        return 'https://jooble.org';
+    }
+    link = str(j.get('link') or '').strip();
+    if link {
+        return link;
+    }
+    jid = str(j.get('id') or '').strip();
+    if jid {
+        return 'https://jooble.org/desc/' + jid;
+    }
+    return 'https://jooble.org';
 }
 
 def:pub JobSearchFeed -> JsxElement {
@@ -501,10 +531,13 @@ def:pub JobSearchFeed -> JsxElement {
         }
     }
 
-    # Pass the job along, because external listings aren't in the built-in job list.
     def apply_to(job: any) {
-        details = {"title": str(job.get("title", "")), "desc": str(job.get("desc", "")), "tags": str(job.get("tags", ""))};
-        nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))), {"state": {"job": details}});
+        try {
+            localStorage.setItem("jaccit_selected_job", JSON.stringify(job));
+            nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))));
+        } except Exception {
+            track_message = "Could not open this job in the application tools.";
+        }
     }
 
     def track_key(job: any) -> str {
@@ -824,8 +857,8 @@ def:pub JobSearchFeed -> JsxElement {
                         }}
                     </section>
                     <section className="lg:col-span-3">
-                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24 max-h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
-                            <CardContent className="flex flex-col gap-4 pt-8 pb-8 overflow-y-auto">
+                        {sel is not None and <Card className="shadow-sm lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:max-h-[calc(100vh-7rem)] flex flex-col overflow-hidden">
+                            <CardContent className="flex min-h-0 flex-1 flex-col gap-4 pt-8 pb-4 overflow-y-auto">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="flex items-center gap-3 min-w-0">
                                         {bool(str(sel.get("logo") or sel.get("companyLogo") or sel.get("company_logo") or "")) and <img
@@ -853,19 +886,41 @@ def:pub JobSearchFeed -> JsxElement {
                                     <p className="text-muted-foreground">{"Matched skills: " + (str(sel_match.get("matched", "")) or "none")}</p>
                                     <p className="text-muted-foreground">{"Missing skills: " + (str(sel_match.get("missing", "")) or "none")}</p>
                                 </div>}
-                                <div className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{str(sel.get("desc", ""))}</div>
+
+                                <div className="text-sm leading-relaxed text-foreground/90 space-y-2 [&_h1]:my-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:my-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_a]:text-primary [&_a]:underline" dangerouslySetInnerHTML={{"__html": format_desc(str(sel.get("desc", "")))}}></div>
+                                {is_jooble_job(sel) and <div className="rounded-lg border border-border/80 bg-muted/40 p-3 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <span className="text-xs text-muted-foreground">Listing from Jooble includes a summary snippet only.</span>
+                                    <a
+                                        href={get_jooble_link(sel)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline shrink-0"
+                                    >
+                                        <span>View full job description on Jooble</span>
+                                        <span aria-hidden="true">&rarr;</span>
+                                    </a>
+                                </div>}
                                 <div className="flex flex-wrap gap-1.5">
                                     {for tag in str(sel["tags"] if (sel and "tags" in sel) else "").split(", ") {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
                                     }}
                                 </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now (demo)</Button>
-                                    <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
-                                    {bool(track_message) and <p role="alert" className="text-sm text-destructive">{track_message}</p>}
-                                </div>
                             </CardContent>
+                            <CardFooter className="shrink-0 flex flex-wrap items-center gap-3">
+                                <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now</Button>
+                                <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
+                                <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
+                                {is_jooble_job(sel) and <a
+                                    href={get_jooble_link(sel)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-muted hover:text-accent-foreground"
+                                >
+                                    <span>Full description</span>
+                                    <span aria-hidden="true">&rarr;</span>
+                                </a>}
+                                {bool(track_message) and <p role="alert" className="w-full text-sm text-destructive">{track_message}</p>}
+                            </CardFooter>
                         </Card>}
                     </section>
                 </div>}

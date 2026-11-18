@@ -1253,25 +1253,15 @@ test "main CLI runs fetch with individual filters and displays criteria accurate
 
 # --- Database Tests ---
 
-test "get_db_connection without url raises ValueError" {
-    old_url1 = os.environ.get("TURSO_DATABASE_URL");
-    old_url2 = os.environ.get("TURSO_URL");
-    if old_url1 is not None {
-        del os.environ["TURSO_DATABASE_URL"];
-    }
-    if old_url2 is not None {
-        del os.environ["TURSO_URL"];
-    }
+test "get_db_connection without url uses local SQLite fallback" {
+    with patch.dict(os.environ, {"TURSO_DATABASE_URL": "", "TURSO_URL": ""}) {
     with patch("os.path.exists", return_value=False) {
-        with testraises(ValueError) {
-            get_db_connection(database_url=None, auth_token=None);
+        with patch("db.LOCAL_DATABASE_PATH", ":memory:") {
+            conn = get_db_connection(database_url=None, auth_token=None);
+            assert conn.execute("SELECT 1").fetchone()[0] == 1;
+            conn.close();
         }
     }
-    if old_url1 is not None {
-        os.environ["TURSO_DATABASE_URL"] = old_url1;
-    }
-    if old_url2 is not None {
-        os.environ["TURSO_URL"] = old_url2;
     }
 }
 

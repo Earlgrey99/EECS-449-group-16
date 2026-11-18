@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
+ROOT = Path(__file__).resolve().parent.parent
 BASE = os.getenv("DEMO_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
@@ -26,37 +27,45 @@ def main() -> int:
         try:
             page.goto(f"{BASE}/login", wait_until="domcontentloaded", timeout=45000)
             try:
-                page.wait_for_url("**/jobs", timeout=30000)
+                page.wait_for_url("**/find-jobs", timeout=30000)
             except PlaywrightTimeoutError:
                 login_button = page.get_by_role("button", name="Continue as Test User")
                 if login_button.count():
                     login_button.click()
-                    page.wait_for_url("**/jobs", timeout=25000)
+                    page.wait_for_url("**/find-jobs", timeout=25000)
                 else:
-                    raise AssertionError("Test profile did not authenticate or redirect to /jobs")
+                    raise AssertionError("Test profile did not authenticate or redirect to /find-jobs")
 
             page.get_by_text("Based on your preferences").wait_for(timeout=60000)
             role = page.get_by_text("Data Analyst", exact=True).first
             role.wait_for(timeout=35000)
             role.click()
 
-            page.get_by_role("button", name="Apply now (demo)").click()
+            page.get_by_role("button", name="Apply now", exact=True).click()
             page.wait_for_url("**/tools?job=3", timeout=20000)
             page.get_by_role("heading", name="Application tools").wait_for(timeout=20000)
 
-            page.get_by_placeholder("Test Applicant").fill("Demo Candidate")
-            page.get_by_placeholder("test@example.com").fill("test@example.com")
-            page.get_by_role("button", name="Autofill demo form").click()
-            assert page.get_by_label("Candidate name").input_value() == "Demo Candidate"
-            assert page.get_by_label("Candidate email").input_value() == "test@example.com"
-            assert page.get_by_role("button", name="Submit application (disabled)").is_disabled()
-            print("PASS: Job -> tools routing, sample autofill, no auto-submission")
+            autofill = page.locator("section[aria-labelledby='autofill-heading']")
+            autofill.get_by_role("heading", name="1. Your autofill profile").wait_for(timeout=20000)
+            autofill.get_by_text("Contact details").wait_for(timeout=20000)
+            email_row = autofill.locator("dl > div", has_text="Email").first
+            assert "@" in email_row.locator("dd").inner_text(), "Autofill profile shows no email"
+            assert autofill.get_by_role("link", name="Edit profile").get_attribute("href") == "/me"
+            assert page.get_by_role("button", name="Autofill demo form").count() == 0
+            print("PASS: Job -> tools routing, autofill profile shows what the extension fills")
 
-            page.get_by_role("button", name="Generate resume review").click()
-            page.locator("pre").wait_for(timeout=30000)
-            review = page.locator("pre").inner_text()
-            assert "Original resume" in review, "Resume review returned no original resume section"
-            print("PASS: Local backend resume review")
+            tailor = page.locator("section[aria-labelledby='tailor-heading']")
+            assert tailor.locator("textarea").count() == 0, "The job from the feed should not need pasting"
+            tailor.locator("input[type=file]").set_input_files(str(ROOT / "tests/data/compatibility/resume_backend.pdf"))
+            tailor.get_by_role("button", name="Tailor my resume").click()
+            tailor.get_by_role("button", name="Use this resume for applications").wait_for(timeout=30000)
+            assert tailor.locator("iframe[title='Tailored resume preview']").count() == 1, "No PDF preview"
+            assert tailor.get_by_text("Job keywords your resume has").count() == 1
+            tailor.get_by_role("button", name="Use this resume for applications").click()
+            tailor.get_by_text("Applications will attach this tailored resume.").wait_for(timeout=15000)
+            tailor.get_by_role("button", name="Switch back to my default resume").click()
+            tailor.get_by_text("Applications will attach your default resume.").wait_for(timeout=15000)
+            print("PASS: Tailored resume PDF, preview, and choosing which resume to send")
 
             page.goto(f"{BASE}/tracker", wait_until="domcontentloaded", timeout=30000)
             page.get_by_role("heading", name="Application tracker").wait_for(timeout=25000)
@@ -79,8 +88,13 @@ def main() -> int:
             print("PASS: Tracker and insights")
 
             page.get_by_role("tab", name="Table").click()
+            page.get_by_role("button", name="Edit", exact=True).click()
+            page.get_by_label("Select Engineer at " + company + " to edit").check()
+            page.get_by_role("button", name="Edit selected (1)").click()
+            page.once("dialog", lambda dialog: dialog.accept())
             page.get_by_role("button", name="Remove Engineer at " + company).click()
-            status.wait_for(state="detached", timeout=10000)
+            page.get_by_label("Status for " + company, exact=True).wait_for(state="detached", timeout=10000)
+            print("PASS: Tracker removes an application")
 
             page.goto(f"{BASE}/me", wait_until="domcontentloaded", timeout=30000)
             page.get_by_text("Personal Information").wait_for(timeout=25000)
