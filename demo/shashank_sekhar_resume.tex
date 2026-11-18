@@ -1,0 +1,81 @@
+% Class demo resume. Demo profile for Shashank Sekhar; the contact details and experience are made up.
+% Rebuild with: pdflatex shashank_sekhar_resume.tex
+\documentclass[letterpaper,11pt]{article}
+\usepackage[margin=0.5in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\pagestyle{empty}
+\raggedright
+\setlength{\tabcolsep}{0in}
+\setlength{\parindent}{0pt}
+\renewcommand{\section}[1]{\vspace{5pt}{\large\scshape #1}\par\vspace{-3pt}\rule{\textwidth}{0.4pt}\par\vspace{2pt}}
+\newcommand{\resumeItem}[1]{\item\small{#1}}
+\newcommand{\resumeSubheading}[4]{
+  \item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}
+}
+\newcommand{\resumeSubHeadingListStart}{\begin{list}{}{\setlength{\leftmargin}{0.15in}\setlength{\itemsep}{1pt}\setlength{\topsep}{0pt}}}
+\newcommand{\resumeSubHeadingListEnd}{\end{list}}
+\newcommand{\resumeItemListStart}{\begin{itemize}\setlength{\itemsep}{-2pt}}
+\newcommand{\resumeItemListEnd}{\end{itemize}}
+\begin{document}
+\begin{center}
+    \textbf{\Huge \scshape Shashank Sekhar} \\ \vspace{2pt}
+    \small Ann Arbor, MI $|$ (555) 555-0142 $|$ \href{mailto:shashank.sekhar@example.com}{\underline{shashank.sekhar@example.com}} $|$
+    \href{https://linkedin.com/in/shashank-sekhar-demo}{\underline{linkedin.com/in/shashank-sekhar-demo}} $|$
+    \href{https://github.com/shashanksekhar-demo}{\underline{github.com/shashanksekhar-demo}}
+\end{center}
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of Michigan}{Ann Arbor, MI}
+      {Bachelor of Science in Engineering, Computer Science; GPA 3.7}{Aug. 2023 -- May 2027}
+    \item \small{Coursework: Data Structures and Algorithms, Database Management Systems, Operating Systems, Machine Learning}
+  \resumeSubHeadingListEnd
+\section{Experience}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Software Engineering Intern}{May 2025 -- Aug. 2025}
+      {Lakeshore Health}{Grand Rapids, MI}
+      \resumeItemListStart
+        \resumeItem{Redesigned the patient check-in page in React, cutting average check-in time from 4 minutes to 90 seconds}
+        \resumeItem{Fixed 30 accessibility issues flagged in an audit of the scheduling app}
+        \resumeItem{Wrote unit tests in Jest that raised front-end test coverage from 35\% to 70\%}
+        \resumeItem{Built a Python ETL job that moved nightly appointment data from CSV exports into PostgreSQL}
+        \resumeItem{Wrote SQL checks that caught duplicate patient records before they reached the reporting database}
+      \resumeItemListEnd
+    \resumeSubheading
+      {Instructional Aide, Intro to Programming}{Jan. 2024 -- Present}
+      {University of Michigan}{Ann Arbor, MI}
+      \resumeItemListStart
+        \resumeItem{Lead a weekly lab section of 30 students and hold 4 hours of office hours a week}
+        \resumeItem{Wrote 12 autograder test suites for C++ programming projects}
+        \resumeItem{Built a Python script that pulls grades from the course API and flags students who are falling behind}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+\section{Projects}
+    \resumeSubHeadingListStart
+      \item
+          \textbf{CampusEats} $|$ \emph{React, Node.js, MongoDB}
+          \resumeItemListStart
+            \resumeItem{Made a dining hall menu app with ratings, used by 500 students in its first month}
+            \resumeItem{Hosted the API on AWS with Docker and set up deploys with GitHub Actions}
+          \resumeItemListEnd
+      \item
+          \textbf{Transit Tracker} $|$ \emph{Python, pandas, PostgreSQL}
+          \resumeItemListStart
+            \resumeItem{Collected 2 million bus arrival records from a public API and stored them in PostgreSQL}
+            \resumeItem{Cleaned the data with pandas and charted the most delayed routes on a public dashboard}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+\section{Technical Skills}
+ \begin{list}{}{\setlength{\leftmargin}{0.15in}}
+    \small{\item{
+     \textbf{Languages}{: Java, C++, JavaScript, HTML/CSS, Python, SQL} \\
+     \textbf{Frameworks}{: React, Node.js, Express, Jest, pandas} \\
+     \textbf{Developer Tools}{: Git, VS Code, Figma, Docker, AWS, Linux}
+    }}
+ \end{list}
+\end{document}
