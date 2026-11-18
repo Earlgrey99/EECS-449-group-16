@@ -515,7 +515,7 @@ def:pub JobSearchFeed -> JsxElement {
     def apply_to(job: any) {
         try {
             localStorage.setItem("jaccit_selected_job", JSON.stringify(job));
-            nav("/tools");
+            nav("/tools?job=" + encodeURIComponent(str(job.get("id", ""))));
         } except Exception {
             track_message = "Could not open this job in the application tools.";
         }
@@ -884,16 +884,11 @@ def:pub JobSearchFeed -> JsxElement {
                                         <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
                                     }}
                                 </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-4">
-                                    <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now (demo)</Button>
-                                    <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
-                                    <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
-                                    {bool(track_message) and <p role="alert" className="text-sm text-destructive">{track_message}</p>}
-                                </div>
                             </CardContent>
                             <CardFooter className="shrink-0 flex flex-wrap items-center gap-3">
-                                <Button className="shadow-sm" onClick={lambda { nav("/tools?job=" + str(sel["id"])); }}>Apply now (demo)</Button>
+                                <Button className="shadow-sm" onClick={lambda { apply_to(sel); }}>Apply now</Button>
                                 <Button variant="outline" onClick={lambda { toggle_selected_save(); }}>{("Saved" if is_saved(sel) else "Save job")}</Button>
+                                <Button variant="outline" disabled={track_key(sel) in tracked_keys} onClick={lambda { add_to_tracker(sel); }}>{("In your tracker" if track_key(sel) in tracked_keys else "Add to tracker")}</Button>
                                 {is_jooble_job(sel) and <a
                                     href={get_jooble_link(sel)}
                                     target="_blank"
@@ -903,6 +898,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     <span>Full description</span>
                                     <span aria-hidden="true">&rarr;</span>
                                 </a>}
+                                {bool(track_message) and <p role="alert" className="w-full text-sm text-destructive">{track_message}</p>}
                             </CardFooter>
                         </Card>}
                     </section>
