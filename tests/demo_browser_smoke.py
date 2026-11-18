@@ -41,7 +41,7 @@ def main() -> int:
             role.wait_for(timeout=35000)
             role.click()
 
-            page.get_by_role("button", name="Apply now (demo)").click()
+            page.get_by_role("button", name="Apply now", exact=True).click()
             page.wait_for_url("**/tools?job=3", timeout=20000)
             page.get_by_role("heading", name="Application tools").wait_for(timeout=20000)
 
@@ -88,8 +88,13 @@ def main() -> int:
             print("PASS: Tracker and insights")
 
             page.get_by_role("tab", name="Table").click()
+            page.get_by_role("button", name="Edit", exact=True).click()
+            page.get_by_label("Select Engineer at " + company + " to edit").check()
+            page.get_by_role("button", name="Edit selected (1)").click()
+            page.once("dialog", lambda dialog: dialog.accept())
             page.get_by_role("button", name="Remove Engineer at " + company).click()
-            status.wait_for(state="detached", timeout=10000)
+            page.get_by_label("Status for " + company, exact=True).wait_for(state="detached", timeout=10000)
+            print("PASS: Tracker removes an application")
 
             page.goto(f"{BASE}/me", wait_until="domcontentloaded", timeout=30000)
             page.get_by_text("Personal Information").wait_for(timeout=25000)

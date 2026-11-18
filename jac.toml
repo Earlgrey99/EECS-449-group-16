@@ -50,7 +50,8 @@ client_auth_callback_url = "http://localhost:8000/login"
 
 [scale.sso.google]
 client_id = "${CLIENT_ID:-968818097390-0k1pcgde5mnghqgm2legs34a5l727gl1.apps.googleusercontent.com}"
-client_secret = "${CLIENT_SECRET:-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}"
+# Set CLIENT_SECRET in .env or the host environment. Never commit the secret here.
+client_secret = "${CLIENT_SECRET}"
 
 [client.vite]
 plugins = [

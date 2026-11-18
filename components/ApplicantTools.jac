@@ -132,6 +132,9 @@ def:pub ApplicantTools() -> JsxElement {
                 job_notice = "We couldn't load that job. Paste its description below.";
             }
         }
+        if has_selected_job {
+            return;
+        }
         passed: any = location.state.get("job") if location.state else None;
         if passed {
             use_application_job(passed);
