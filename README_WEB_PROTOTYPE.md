@@ -87,5 +87,5 @@ environment variables to use a shared database instead.
 - The browser sample form never submits a job application.
 - Resume text is processed by the local Jac backend, not stored in the app.
 - Run `jac check main.jac`, Jac tests, Python tests, and manually verify routes
-  `/`, `/login`, `/jobs`, `/tools` before requesting merge.
+  `/`, `/login`, `/find-jobs`, `/tools` before requesting merge.
 - Browser compatibility with external job application forms is not guaranteed.

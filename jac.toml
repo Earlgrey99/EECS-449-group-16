@@ -53,6 +53,11 @@ client_id = "${CLIENT_ID:-968818097390-0k1pcgde5mnghqgm2legs34a5l727gl1.apps.goo
 # Set CLIENT_SECRET in .env or the host environment. Never commit the secret here.
 client_secret = "${CLIENT_SECRET}"
 
+[client.app_meta_data]
+title = "Launchpad"
+description = "Find jobs, tailor your resume, and track every application in one place."
+theme_color = "#059669"
+
 [client.vite]
 plugins = [
   "tailwindcss()",

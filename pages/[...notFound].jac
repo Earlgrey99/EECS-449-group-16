@@ -11,7 +11,7 @@ def:pub Page() -> JsxPage {
             <h1 className="text-3xl font-semibold">We couldn't find that page</h1>
             <p className="text-muted-foreground">The link may be old or mistyped. Head back to your job feed or the home page.</p>
             <div className="flex flex-wrap justify-center gap-3">
-                <Link to="/jobs" className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Go to jobs</Link>
+                <Link to="/find-jobs" className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Go to jobs</Link>
                 <Link to="/" className="inline-flex h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-muted">Home</Link>
             </div>
         </main>
