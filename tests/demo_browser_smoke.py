@@ -49,6 +49,8 @@ def main() -> int:
 
             autofill = page.locator("section[aria-labelledby='autofill-heading']")
             autofill.get_by_role("heading", name="1. Your autofill profile").wait_for(timeout=20000)
+            # The autofill profile starts collapsed; open it.
+            autofill.get_by_role("button", name="1. Your autofill profile").click()
             autofill.get_by_text("Contact details").wait_for(timeout=20000)
             email_row = autofill.locator("dl > div", has_text="Email").first
             assert "@" in email_row.locator("dd").inner_text(), "Autofill profile shows no email"

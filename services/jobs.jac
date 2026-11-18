@@ -827,6 +827,7 @@ def _tailored_jobs_for(email: str, conn: any = None) -> dict[str, any] {
             if fetched_jobs {
                 return {
                     "ok": True,
+                    "origin": "live",
                     "jobs": fetched_jobs,
                     "query": query_dict,
                     "tailored": True,
@@ -850,6 +851,8 @@ def _tailored_jobs_for(email: str, conn: any = None) -> dict[str, any] {
             }
             return {
                 "ok": True,
+                "origin": "examples",
+                "fallback_reason": "no_results",
                 "jobs": fallback_jobs if fallback_jobs else [dict(j) for j in JOBS],
                 "query": query_dict,
                 "tailored": True,
@@ -857,10 +860,16 @@ def _tailored_jobs_for(email: str, conn: any = None) -> dict[str, any] {
             };
         }
     }
-    
+
+    examples_all = [dict(j) for j in JOBS];
+    for row in examples_all {
+        row["example"] = True;
+    }
     return {
         "ok": True,
-        "jobs": [dict(j) for j in JOBS],
+        "origin": "examples",
+        "fallback_reason": "no_results",
+        "jobs": examples_all,
         "query": None,
         "tailored": False,
         "onboarding_completed": bool(user.get("onboarding_completed")) if user else False
@@ -897,6 +906,7 @@ def:pub search_jobs(
     src_term = str(source or "all").strip().lower();
 
     fetched_jobs: list[dict[str, any]] = [];
+    provider_error = False;
     if src_term != "local" and (search_term or clean_loc or comp_term or clean_sal is not None or ct_term or sec_term) {
         try {
             fetched_jobs = fetch(
@@ -909,12 +919,16 @@ def:pub search_jobs(
                 sector=sec_term,
                 source=src_term
             );
-        } except Exception {}
+        } except Exception {
+            provider_error = True;
+        }
     }
 
     if fetched_jobs {
         return {
             "ok": True,
+            "origin": "live",
+            "fallback_reason": "",
             "jobs": fetched_jobs,
             "count": len(fetched_jobs),
             "query": {
@@ -983,11 +997,15 @@ def:pub search_jobs(
                 continue;
             }
         }
-        fallback_jobs.append(dict(j));
+        row = dict(j);
+        row["example"] = True;
+        fallback_jobs.append(row);
     }
 
     return {
         "ok": True,
+        "origin": "examples",
+        "fallback_reason": "provider_error" if provider_error else "no_results",
         "jobs": fallback_jobs[:n],
         "count": len(fallback_jobs[:n]),
         "query": {

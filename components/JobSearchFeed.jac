@@ -56,7 +56,8 @@ def:pub JobCard(
     logo: str = "",
     source: str = "",
     match_score: int = -1,
-    reasons: list[str] = []
+    reasons: list[str] = [],
+    is_example: bool = False
 ) -> JsxElement {
     sal_display = format_salary(salary);
     return <Card className={"cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md " + ("ring-2 ring-primary" if active else "shadow-sm")} onClick={onSelect}>
@@ -76,7 +77,8 @@ def:pub JobCard(
             <p className="text-sm text-muted-foreground">{location}</p>
             {bool(sal_display) and <p className="text-sm font-medium tabular-nums">{sal_display}</p>}
             {match_score >= 0 and <Badge variant={("default" if match_score >= 75 else ("secondary" if match_score >= 50 else "outline"))} className="w-fit tabular-nums">{str(match_score) + "% match"}</Badge>}
-             {len(reasons) > 0 and <p className="text-xs text-primary">{"Fits you: " + " · ".join(reasons[:3])}</p>}
+            {len(reasons) > 0 and <p className="text-xs text-primary">{"Fits you: " + " · ".join(reasons[:3])}</p>}
+            {is_example and <Badge variant="outline" className="w-fit text-xs font-medium border-dashed">Example listing</Badge>}
             <div className="mt-1 flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
                     {for tag in tags.split(", ")[:2] {
@@ -103,6 +105,8 @@ def is_jooble_job(j: dict[str, any] | None = None) -> bool {
     }
     return False;
 }
+
+glob WORK_PREF_OPTIONS: list[str] = ["Remote", "Hybrid", "In person"];
 
 def get_jooble_link(j: dict[str, any] | None = None) -> str {
     if not j {
@@ -142,12 +146,18 @@ def:pub JobSearchFeed -> JsxElement {
     has tailored_summary: str = "";
     has is_custom_search: bool = False;
     has custom_summary: str = "";
+    has data_origin: str = "";
+    has tailored_origin: str = "";
     has show_filters: bool = False;
     has salary_min_filter: str = "";
     has contract_types_filter: list[str] = [];
     has sectors_filter: list[str] = [];
     has company_filter: str = "";
     has source_filter: str = "all";
+    # Work preference: Remote / Hybrid / In person. This is separate from the
+    # location list, because a city and a work mode are different questions.
+    has work_modes: list[str] = [];
+    has work_pref_open: bool = False;
     has did_load_jobs: bool = False;
     has match_rows: list[dict[str, any]] = [];
     has has_resume: bool = True;
@@ -224,6 +234,12 @@ def:pub JobSearchFeed -> JsxElement {
         if not init_jobs {
             init_jobs = await list_jobs();
         }
+        if tailored_res and tailored_res.get("origin") {
+            data_origin = str(tailored_res.get("origin"));
+        } else {
+            data_origin = "examples";
+        }
+        tailored_origin = data_origin;
         init_jobs = await rank_for_me(init_jobs);
         jobs = init_jobs;
         tailored_jobs = init_jobs;
@@ -265,8 +281,11 @@ def:pub JobSearchFeed -> JsxElement {
         } except Exception {}
         if match_res and match_res.get("ok") {
             has_resume = bool(match_res.get("has_resume"));
+            # Re-scored jobs replace their old rows, so a resume upload or edit
+            # invalidates the previous scores on the next feed load.
             new_rows: list[dict[str, any]] = match_res.get("scores") or [];
-            match_rows = new_rows + match_rows;
+            fresh_ids = {str(r.get("id", "")) for r in new_rows};
+            match_rows = new_rows + [r for r in match_rows if str(r.get("id", "")) not in fresh_ids];
         }
     }
 
@@ -326,11 +345,11 @@ def:pub JobSearchFeed -> JsxElement {
         locations_filter = [l for l in locations_filter if l != city_label];
     }
 
-    def toggle_remote {
-        if "Remote" in locations_filter {
-            locations_filter = [l for l in locations_filter if l != "Remote"];
+    def toggle_work_pref(mode: str) {
+        if mode in work_modes {
+            work_modes = [m for m in work_modes if m != mode];
         } else {
-            locations_filter = locations_filter + ["Remote"];
+            work_modes = work_modes + [mode];
         }
     }
 
@@ -371,6 +390,11 @@ def:pub JobSearchFeed -> JsxElement {
         if loc_query.strip() and loc_query.strip() not in active_locs {
             active_locs.append(loc_query.strip());
         }
+        # "Remote" as a work preference also drives the provider search, which
+        # understands remote as a location.
+        if "Remote" in work_modes and "Remote" not in active_locs {
+            active_locs.append("Remote");
+        }
 
         loc_arg = ", ".join(active_locs) if active_locs else None;
         ct_arg = ", ".join(contract_types_filter) if contract_types_filter else None;
@@ -395,6 +419,7 @@ def:pub JobSearchFeed -> JsxElement {
         } else {
             jobs = [];
         }
+        data_origin = str(res.get("origin") or "") if (res and res.get("ok")) else "provider_error";
         is_custom_search = True;
 
         parts: list[str] = [];
@@ -434,6 +459,7 @@ def:pub JobSearchFeed -> JsxElement {
         jobs = tailored_jobs;
         is_custom_search = False;
         custom_summary = "";
+        data_origin = tailored_origin;
         salary_min_filter = "";
         contract_types_filter = [];
         sectors_filter = [];
@@ -500,7 +526,22 @@ def:pub JobSearchFeed -> JsxElement {
         return matches_q and matches_l;
     }
 
-    filtered = [j for j in jobs if matches(j)];
+    # Work preference applies everywhere (tailored feed and custom search):
+    # a remote-listed job only satisfies "Remote"; a city job satisfies
+    # "Hybrid" or "In person". Hybrid stays broad because provider data rarely
+    # says whether an on-site role allows hybrid work.
+    def matches_work_pref(j: dict[str, any]) -> bool {
+        if not work_modes {
+            return True;
+        }
+        j_loc = str(j.get("location", "")).lower();
+        if "remote" in j_loc {
+            return "Remote" in work_modes;
+        }
+        return "Hybrid" in work_modes or "In person" in work_modes;
+    }
+
+    filtered = [j for j in jobs if matches(j) and matches_work_pref(j)];
     sel: dict[str, any] | None = None;
     for j in filtered {
         if str(j.get("id", "")) == str(selected_id) {
@@ -565,7 +606,7 @@ def:pub JobSearchFeed -> JsxElement {
                 applied_date=str(today.toLocaleDateString("en-CA")),
                 description="",
                 pay=None,
-                status="Applied",
+                status="Saved",
                 job_url=str(job.get("link") or job.get("id") or ""),
                 salary_text=str(job.get("salary") or "")
             );
@@ -591,6 +632,12 @@ def:pub JobSearchFeed -> JsxElement {
     def handle_source_filter(e: ChangeEvent) { source_filter = e.target.value; }
 
     return <div className="flex min-h-svh flex-col bg-primary/5">
+        {data_origin == "examples" and <div role="note" className="border-b border-amber-300/60 bg-amber-50 px-6 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
+            <strong className="font-semibold">Example listings.</strong> These are sample openings shown when no live provider results are available — not real job posts.
+        </div>}
+        {data_origin == "provider_error" and <div role="alert" className="border-b border-destructive/30 bg-destructive/10 px-6 py-2 text-xs text-destructive">
+            <strong className="font-semibold">Job providers could not be reached.</strong> Showing example listings instead — please try your search again.
+        </div>}
         <TopNav />
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 pt-8 pb-16 pl-6 pr-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {loading and <div className="flex items-center justify-center p-16"><Spinner /></div>}
@@ -675,15 +722,39 @@ def:pub JobSearchFeed -> JsxElement {
                         </div>
                     </div>
 
-                    {(len(locations_filter) > 0) and <div className="flex flex-wrap items-center gap-1.5 px-2">
-                        <span className="text-[11px] font-medium text-muted-foreground mr-1">Locations:</span>
+                    <div className="relative px-2">
                         <button
                             type="button"
-                            onClick={toggle_remote}
-                            className={"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer " + ("bg-primary text-primary-foreground shadow-xs" if "Remote" in locations_filter else "border border-dashed border-primary/40 bg-background text-primary hover:bg-primary/5")}
+                            onClick={lambda { work_pref_open = not work_pref_open; }}
+                            aria-expanded={work_pref_open}
+                            className={"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer " + ("bg-primary text-primary-foreground shadow-xs" if work_modes else "border border-dashed border-primary/40 bg-background text-primary hover:bg-primary/5")}
                         >
-                            {("✓ Remote" if "Remote" in locations_filter else "+ Remote")}
+                            {("Work preference: " + ", ".join(work_modes) if work_modes else "Work preference: any")}
                         </button>
+                        {work_pref_open and <div className="absolute left-2 top-full z-30 mt-1.5 w-44 rounded-xl border border-border bg-card p-1.5 shadow-lg animate-in fade-in zoom-in-95 duration-150">
+                            {for mode in WORK_PREF_OPTIONS {
+                                <label key={mode} className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground hover:bg-muted">
+                                    <input
+                                        type="checkbox"
+                                        checked={mode in work_modes}
+                                        onChange={lambda { toggle_work_pref(mode); }}
+                                        className="size-4 accent-[var(--primary)]"
+                                    />
+                                    <span>{mode}</span>
+                                </label>
+                            }}
+                            <button
+                                type="button"
+                                onClick={lambda { work_modes = []; work_pref_open = False; }}
+                                className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted cursor-pointer"
+                            >
+                                No preference
+                            </button>
+                        </div>}
+                    </div>
+
+                    {(len(locations_filter) > 0) and <div className="flex flex-wrap items-center gap-1.5 px-2">
+                        <span className="text-[11px] font-medium text-muted-foreground mr-1">Locations:</span>
                         {for loc_item in locations_filter {
                             if loc_item != "Remote" {
                                 <span key={loc_item} className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
@@ -705,16 +776,6 @@ def:pub JobSearchFeed -> JsxElement {
                             className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer ml-1"
                         >
                             Clear all
-                        </button>
-                    </div>}
-
-                    {(len(locations_filter) == 0) and <div className="flex items-center gap-1.5 px-2">
-                        <button
-                            type="button"
-                            onClick={toggle_remote}
-                            className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 bg-background px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/5 cursor-pointer"
-                        >
-                            + Remote
                         </button>
                     </div>}
 
@@ -859,6 +920,7 @@ def:pub JobSearchFeed -> JsxElement {
                                 source={str(j.get("source") or j.get("site") or "")}
                                 match_score={card_score(j)}
                                 reasons={j.get("pref_reasons") or []}
+                                is_example={bool(j.get("example"))}
                                 active={sel is not None and str(sel.get("id", "")) == str(j.get("id", ""))}
                                 saved={is_saved(j)}
                                 onSelect={lambda { selected_id = str(j.get("id", "")); }}
@@ -883,6 +945,7 @@ def:pub JobSearchFeed -> JsxElement {
                                     </div>
                                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                                         <Badge variant="outline">{str(sel.get("type", "Full-time"))}</Badge>
+                                        {bool(sel.get("example")) and <Badge variant="outline" className="border-dashed">Example listing</Badge>}
                                         {bool(str(sel.get("source") or sel.get("site") or "")) and <span className="text-xs text-muted-foreground">{"via " + str(sel.get("source") or sel.get("site") or "")}</span>}
                                     </div>
                                 </div>

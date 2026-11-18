@@ -56,7 +56,8 @@ test "tracker applications are saved and listed newest first" {
     _add_for(uid, "Analyst", "Beta", "2026-11-05", conn=conn);
     rows = _list_for(uid, conn=conn)["applications"];
     assert [r["role"] for r in rows] == ["Analyst", "Engineer"];
-    assert rows[0]["status"] == "Applied";
+    # With no status given, a new application starts as Saved.
+    assert rows[0]["status"] == "Saved";
     assert rows[0]["pay"] == 0;
     assert rows[0]["description"] == "None found";
 }
@@ -159,7 +160,8 @@ test "tracker status options are customizable and cannot remove a status in use"
     other = make_user("other@example.com", conn);
     app_id = _add_for(owner, "Engineer", "Acme", "2026-11-04", status="Applied", conn=conn)["application"]["id"];
     defaults = _status_options_for(owner, conn=conn);
-    assert defaults[0] == {"name": "Applied", "color": "#64748b"};
+    assert defaults[0] == {"name": "Saved", "color": "#a16207"};
+    assert defaults[1] == {"name": "Applied", "color": "#64748b"};
 
     custom = [
         {"name": "Applied", "color": "#123456"},

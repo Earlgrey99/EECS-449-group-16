@@ -575,7 +575,34 @@ def find_links(text: str) -> dict[str, any] {
     return links;
 }
 
-"""Read a whole resume's text into the four profile sections."""
+"""Pull the contact line facts a resume usually carries up top: the person's
+name, an email address and a phone number. Everything stays what the file
+says - nothing is inferred or invented."""
+def find_contact(text: str) -> dict[str, str] {
+    contact = {"name": "", "email": "", "phone": ""};
+    if not text {
+        return contact;
+    }
+    email_m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text);
+    if email_m {
+        contact["email"] = email_m.group(0);
+    }
+    phone_m = re.search(r"(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}", text);
+    if phone_m {
+        contact["phone"] = phone_m.group(0).strip();
+    }
+    # The name is usually the first short line before any bullet or date.
+    for line in text.splitlines()[:15] {
+        clean = " ".join(str(line).split()).strip().rstrip(",");
+        if clean and not is_bullet(line) and looks_like_name(clean) and "@" not in clean and not re.search(r"\d{4}", clean) {
+            contact["name"] = clean;
+            break;
+        }
+    }
+    return contact;
+}
+
+"""Read a whole resume's text into the profile sections plus contact facts."""
 def parse_resume_text(text: str) -> dict[str, any] {
     sections = split_sections(text or "");
     return {
@@ -583,6 +610,7 @@ def parse_resume_text(text: str) -> dict[str, any] {
         "education": parse_education(sections["education"]),
         "skills": parse_skills(sections["skills"]),
         "links": find_links(text or ""),
+        "contact": find_contact(text or ""),
     };
 }
 

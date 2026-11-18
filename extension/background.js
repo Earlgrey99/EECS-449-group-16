@@ -126,7 +126,7 @@ async function addToTracker({ role, company, url }) {
     applied_date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
     description: "",
     pay: null,
-    status: "Applied",
+    status: "Saved",
     job_url: page.origin + page.pathname,
     salary_text: "",
   }, token);

@@ -29,6 +29,7 @@ import from ..services.profile_llm {
 }
 import from ..services.locations { search_cities }
 import from ..services.job_preferences { get_job_preferences, save_job_preferences }
+import from ..services.resume_profile { parse_resume_upload }
 import from .ResumeProfileEditor { ResumeProfileEditor }
 
 glob POPULAR_SECTORS: list[str] = [
@@ -113,6 +114,12 @@ def:pub UserProfilePage -> JsxElement {
     has existing_resume_title: str = "";
     has has_existing_resume: bool = False;
     has reading_file: bool = False;
+    # Filling the onboarding boxes from an uploaded resume.
+    has autofill_content: str = "";
+    has autofill_ready: bool = False;
+    has autofilling: bool = False;
+    has autofill_error: str = "";
+    has autofilled_note: str = "";
 
     has city_suggestions: list[str] = [];
     has city_dropdown_open: bool = False;
@@ -501,6 +508,117 @@ def:pub UserProfilePage -> JsxElement {
         }
     }
 
+    # Copy what the parsed resume says into the empty onboarding boxes. A value
+    # the user already typed always wins, and nothing is guessed or invented.
+    def apply_resume_autofill(profile: any) {
+        filled: list[str] = [];
+        contact: dict[str, any] = profile.get("contact") or {};
+        name = str(contact.get("name") or "").strip();
+        if name and not first_name.strip() and not last_name.strip() {
+            parts = name.split();
+            first_name = parts[0];
+            if len(parts) > 1 {
+                last_name = " ".join(parts[1:]);
+            }
+            filled = filled + ["name"];
+        }
+        parsed_email = str(contact.get("email") or "").strip();
+        if parsed_email and not email.strip() and not email_locked {
+            email = parsed_email;
+            filled = filled + ["email"];
+        }
+        parsed_phone = str(contact.get("phone") or "").strip();
+        if parsed_phone and not phone.strip() {
+            phone = parsed_phone;
+            filled = filled + ["phone"];
+        }
+        links: dict[str, any] = profile.get("links") or {};
+        parsed_li = str(links.get("linkedin") or "").strip();
+        if parsed_li and not linkedin.strip() {
+            linkedin = parsed_li;
+            filled = filled + ["LinkedIn"];
+        }
+        parsed_gh = str(links.get("github") or "").strip();
+        if parsed_gh and not github.strip() {
+            github = parsed_gh;
+            filled = filled + ["GitHub"];
+        }
+        parsed_pf = str(links.get("portfolio") or "").strip();
+        if parsed_pf and not portfolio.strip() {
+            portfolio = parsed_pf;
+            filled = filled + ["portfolio"];
+        }
+        jobs = profile.get("experience") or [];
+        for job in jobs {
+            title = str((job or {}).get("title") or "").strip();
+            if title and not job_titles.strip() {
+                job_titles = title;
+                filled = filled + ["most recent job title"];
+                break;
+            }
+        }
+        autofilled_note = "Filled from your resume: " + ", ".join(filled) if filled else "We couldn't find new details to fill in - please type them below.";
+    }
+
+    # Step 1 of the autofill: read the picked file into state (same as the
+    # resume upload box). Step 2 (run_autofill) parses it and fills the boxes.
+    def handle_autofill_file(e: ChangeEvent) {
+        target: any = e.target;
+        files: any = target.files;
+        if not files or not files[0] {
+            return;
+        }
+        file_obj: any = files[0];
+        if file_obj.size > 5 * 1024 * 1024 {
+            autofill_error = "Choose a file 5 MB or smaller.";
+            return;
+        }
+        autofill_error = "";
+        autofilled_note = "";
+        autofill_ready = False;
+        reading_file = True;
+        reader: any = None;
+        try {
+            reader = Reflect.construct(FileReader, []);
+        } except Exception {
+            reader = None;
+        }
+        if not reader {
+            reading_file = False;
+            autofill_error = "This browser can't read files. Please type your details below.";
+            return;
+        }
+        reader.onload = lambda (load_ev: any) {
+            autofill_content = str(load_ev.target.result);
+            reading_file = False;
+            autofill_ready = True;
+        };
+        reader.onerror = lambda (err_ev: any) {
+            reading_file = False;
+            autofill_error = "We couldn't read that file. Please type your details below.";
+        };
+        reader.readAsDataURL(file_obj);
+    }
+
+    async def run_autofill() {
+        autofilling = True;
+        try {
+            res: any = await parse_resume_upload(
+                token=str(localStorage.getItem("jac_token") or ""),
+                resume_content=autofill_content
+            );
+            if res and res.get("ok") {
+                apply_resume_autofill(res.get("profile") or {});
+                autofill_ready = False;
+            } else {
+                autofill_error = str((res or {}).get("error") or "We couldn't read that file. Please type your details below.");
+            }
+        } except Exception {
+            autofill_error = "We couldn't read that file. Please type your details below.";
+        }
+        autofilling = False;
+    }
+
     async def handle_submit(e: FormEvent) {
         e.preventDefault();
         message = "";
@@ -636,6 +754,34 @@ def:pub UserProfilePage -> JsxElement {
                                     <h2 className="text-base font-semibold text-foreground">Personal Information</h2>
                                     <p className="text-xs text-muted-foreground">Basic details about you</p>
                                 </div>
+                            </div>
+
+                            <div className="flex flex-col gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex flex-col min-w-0">
+                                        <p className="text-sm font-medium text-foreground">Autofill from your resume</p>
+                                        <p className="text-xs text-muted-foreground">Upload a resume and we'll fill the empty boxes below from what it says. You can always edit them.</p>
+                                    </div>
+                                    <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
+                                        <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} className="size-3.5" />
+                                        <span>{("Choose a different file" if autofill_ready else ("Reading file..." if reading_file else "Upload resume"))}</span>
+                                        <input
+                                            id="onboarding-autofill-upload"
+                                            type="file"
+                                            accept=".pdf,.docx,.txt"
+                                            onChange={handle_autofill_file}
+                                            className="sr-only"
+                                        />
+                                    </label>
+                                </div>
+                                {autofill_ready and <div className="flex flex-wrap items-center gap-2">
+                                    <Button size="sm" disabled={autofilling} onClick={run_autofill}>
+                                        {("Reading resume..." if autofilling else "Fill empty fields")}
+                                    </Button>
+                                    <span className="text-xs text-muted-foreground">File ready. This only fills boxes that are still empty.</span>
+                                </div>}
+                                {bool(autofilled_note) and <p role="status" className="text-xs font-medium text-primary">{autofilled_note}</p>}
+                                {bool(autofill_error) and <p role="alert" className="text-xs text-destructive">{autofill_error}</p>}
                             </div>
 
                             <div className="grid gap-4 sm:grid-cols-2">

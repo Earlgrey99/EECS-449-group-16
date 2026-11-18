@@ -78,7 +78,8 @@ port, something else is already using 8000: stop it and start again.
 
 ### 5. Sign in to the career assistant
 
-The **Explore** page's career assistant runs on Puter, a free in-browser AI service.
+The career assistant (the **Career assistant** button, or the `/explore` page) runs on
+Puter, a free in-browser AI service.
 Open <http://localhost:8000/explore>, ask it anything, and sign in to Puter in the popup
 that appears. Do this the night before, so the class doesn't watch a sign-in.
 
@@ -139,15 +140,20 @@ Click **Jobs**.
 - Click **Add to tracker**. The button changes to **In your tracker**.
 
 The feed shows the built-in sample listings, because the demo profile has no saved
-live search. To show live listings, type a search like `data engineer` in the search
-box. Live results depend on the Wi-Fi and the job sites, so keep this optional.
+live search. A banner at the top and an **Example listing** badge on each card say so:
+
+> "These are sample listings for the demo. With a saved search, the feed shows live
+> jobs from real job sites."
+
+To show live listings, type a search like `data engineer` in the search box. Live
+results depend on the Wi-Fi and the job sites, so keep this optional.
 
 ### 3. Resume enhancer (3 minutes)
 
 Still on the Bluewater listing, click **Tailor my resume**. Applicant Tools opens with
 the job already filled in, so there's nothing to paste.
 
-1. Scroll through **1. Your autofill profile**:
+1. Click **1. Your autofill profile** to open it, and scroll through it:
 
    > "This is exactly what our extension will fill on an application, and where each
    > value comes from."
@@ -226,7 +232,8 @@ Close the form tab and click **Tracker**.
 
 ### 6. Career assistant (1 minute, optional)
 
-Click **Explore** and ask something like *"What jobs can I get with a computer science
+Click the **Career assistant** button in the bottom-right corner, or open
+<http://localhost:8000/explore> for the full page, and ask something like *"What jobs can I get with a computer science
 degree besides software engineering?"* The assistant answers, and the chat is saved to
 the account.
 

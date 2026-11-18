@@ -283,7 +283,7 @@ def main() -> int:
                 check(
                     "the job reaches the tracker with its link",
                     len(tracked) == 1 and tracked[0]["role"] == "Software Engineer" and tracked[0]["company"] == "Fixture Co"
-                    and tracked[0]["job_url"].endswith("/tricky_form.html") and tracked[0]["status"] == "Applied",
+                    and tracked[0]["job_url"].endswith("/tricky_form.html") and tracked[0]["status"] == "Saved",
                     tracked,
                 )
 

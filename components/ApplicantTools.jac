@@ -2,6 +2,8 @@ import from "@jac/runtime" { jacIsLoggedIn, Link, Navigate, useLocation, useNavi
 import from .TopNav { TopNav }
 import from .SiteFooter { SiteFooter }
 import from .ui.button { Button }
+import from "@hugeicons/react" { HugeiconsIcon }
+import from "@hugeicons/core-free-icons" { ArrowDown01Icon }
 import from ..services.applicant_demo { get_applicant_details, tailor_resume_pdf, use_tailored_resume, use_default_resume }
 import from ..services.jobs { list_jobs }
 
@@ -28,6 +30,10 @@ def:pub ApplicantTools() -> JsxElement {
     has did_init_tools: bool = False;
 
     has job_notice: str = "";
+    # Where the real employer application lives, when the job has a live source.
+    has employer_link: str = "";
+    has employer_source: str = "";
+    has job_is_example: bool = False;
     has saved_resume_title: str = "";
     has upload_name: str = "";
     has upload_content: str = "";
@@ -54,6 +60,11 @@ def:pub ApplicantTools() -> JsxElement {
     has choosing: bool = False;
     has choice_message: str = "";
     has choice_error: str = "";
+
+    # Collapsible sections: the autofill profile starts closed, the tailoring
+    # workflow (the main tool) starts open.
+    has autofill_open: bool = False;
+    has tailor_open: bool = True;
 
     # Use the saved profile and resume, so the user doesn't retype them here.
     async def load_saved_details {
@@ -109,6 +120,11 @@ def:pub ApplicantTools() -> JsxElement {
         application_company = str(job.get("company") or "");
         application_pay = str(job.get("salary") or job.get("salary_text") or "");
         application_description = plain_text(desc);
+        raw_link = str(job.get("link") or job.get("job_url") or job.get("application_url") or "").strip();
+        # A link starting with "/" is on this site, like the class demo's practice form.
+        employer_link = raw_link if (raw_link.startswith("http://") or raw_link.startswith("https://") or raw_link.startswith("/")) else "";
+        employer_source = str(job.get("source") or job.get("site") or "").strip();
+        job_is_example = bool(job.get("example")) or (not employer_link and (not employer_source or employer_source == "local"));
         use_job(title, desc, tags);
     }
 
@@ -309,13 +325,24 @@ def:pub ApplicantTools() -> JsxElement {
             </header>
 
             <section aria-labelledby="autofill-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
-                <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="flex flex-col gap-1">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                    <button
+                        type="button"
+                        onClick={lambda { autofill_open = not autofill_open; }}
+                        aria-expanded={autofill_open}
+                        className="group flex flex-1 items-center justify-between gap-3 rounded-lg text-left cursor-pointer"
+                    >
                         <h2 id="autofill-heading" className="text-2xl font-semibold">1. Your autofill profile</h2>
-                        <p className="max-w-3xl text-sm text-muted-foreground">This is what the Launchpad extension fills on a real application. Your saved profile comes first. Details read from your resume fill only what the profile leaves blank, so check those.</p>
-                    </div>
-                    <Link to="/me" className="inline-flex h-9 shrink-0 items-center self-start rounded-lg border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/10">Edit profile</Link>
+                        <HugeiconsIcon
+                            icon={ArrowDown01Icon}
+                            strokeWidth={2}
+                            className={"size-5 shrink-0 text-muted-foreground transition-transform duration-200 " + ("rotate-180" if autofill_open else "group-hover:translate-y-0.5")}
+                        />
+                    </button>
+                    {autofill_open and <Link to="/me" className="inline-flex h-9 shrink-0 items-center self-start rounded-lg border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/10">Edit profile</Link>}
                 </div>
+                <p className="mb-6 max-w-3xl text-sm text-muted-foreground">This is what the Launchpad extension fills on a real application. Your saved profile comes first. Details read from your resume fill only what the profile leaves blank, so check those.</p>
+                {autofill_open and <div className="flex flex-col gap-6">
                 {(not autofill_loaded) and <p role="status" className="text-sm text-muted-foreground">Loading your profile...</p>}
                 {bool(autofill_error) and <p role="alert" className="text-sm text-red-600">{autofill_error}</p>}
                 {(autofill_loaded and not autofill_error) and <div className="flex flex-col gap-6">
@@ -360,15 +387,29 @@ def:pub ApplicantTools() -> JsxElement {
                         <p className="mt-3 text-muted-foreground">Fields marked Not set stay blank. Demographic answers are kept in the extension's Saved answers and never sent to Launchpad. Date of birth and Social Security number are never filled.</p>
                     </div>
                 </div>}
+                </div>}
             </section>
 
             <section aria-labelledby="tailor-heading" className="rounded-2xl border bg-card p-6 shadow-sm">
-                <div className="mb-6 flex flex-col gap-1">
-                    <h2 id="tailor-heading" className="text-2xl font-semibold">2. Tailor your resume</h2>
-                    <p className="max-w-3xl text-sm text-muted-foreground">Launchpad edits a copy of your resume PDF for the job and keeps its fonts and layout. Bullets and skills that match the job move up, and AI can reword bullets in the job's terms. It never adds a skill, number, or claim your resume doesn't already show, unless you choose a skill below. Review the new PDF, then choose which resume to send.</p>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                    <button
+                        type="button"
+                        onClick={lambda { tailor_open = not tailor_open; }}
+                        aria-expanded={tailor_open}
+                        className="group flex flex-1 items-center justify-between gap-3 rounded-lg text-left cursor-pointer"
+                    >
+                        <h2 id="tailor-heading" className="text-2xl font-semibold">2. Tailor your resume</h2>
+                        <HugeiconsIcon
+                            icon={ArrowDown01Icon}
+                            strokeWidth={2}
+                            className={"size-5 shrink-0 text-muted-foreground transition-transform duration-200 " + ("rotate-180" if tailor_open else "group-hover:translate-y-0.5")}
+                        />
+                    </button>
                 </div>
+                <p className="mb-6 max-w-3xl text-sm text-muted-foreground">Launchpad edits a copy of your resume PDF for the job and keeps its fonts and layout. Bullets and skills that match the job move up, and AI can reword bullets in the job's terms. It never adds a skill, number, or claim your resume doesn't already show, unless you choose a skill below. Review the new PDF, then choose which resume to send.</p>
 
-                <div className="mb-6 flex flex-col gap-3 rounded-xl border bg-primary/5 p-4 text-sm md:flex-row md:items-center md:justify-between">
+                {tailor_open and <div className="flex flex-col gap-6">
+                <div className="mb-0 flex flex-col gap-3 rounded-xl border bg-primary/5 p-4 text-sm md:flex-row md:items-center md:justify-between">
                     <p>
                         <span className="text-muted-foreground">Applications attach: </span>
                         <span className="font-medium">{app_resume_title or "No resume saved yet"}</span>
@@ -378,6 +419,16 @@ def:pub ApplicantTools() -> JsxElement {
                 </div>
 
                 {bool(job_notice) and <p role="status" className="mb-4 text-sm text-amber-700">{job_notice}</p>}
+                {bool(employer_link) and <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+                    {(not job_is_example) and <span className="text-foreground">When your materials are ready, submit the application on the employer's site{bool(employer_source) and <span className="text-muted-foreground">{" (listing via " + employer_source + ")"}</span>}.</span>}
+                    {job_is_example and <span className="text-foreground">This is an example listing. Its application is a practice form, so nothing you fill in is sent.</span>}
+                    <a href={employer_link} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-primary px-4 font-medium text-primary-foreground hover:bg-primary/90">
+                        Open employer application <span aria-hidden="true">&rarr;</span>
+                    </a>
+                </div>}
+                {(job_is_example and not employer_link) and <p role="note" className="mb-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
+                    This is an example listing, so there is no employer application behind it. The tools below still show how your resume and answers would be prepared.
+                </p>}
                 <div className="grid gap-6 md:grid-cols-2">
                     <div className="flex flex-col gap-3">
                         <h3 className="font-semibold">Job</h3>
@@ -463,6 +514,7 @@ def:pub ApplicantTools() -> JsxElement {
                 </div>}
                 {bool(choice_message) and <p role="status" className="mt-3 text-sm text-primary">{choice_message}</p>}
                 {bool(choice_error) and <p role="alert" className="mt-3 text-sm text-red-600">{choice_error}</p>}
+                </div>}
             </section>
         </main>
         <SiteFooter />

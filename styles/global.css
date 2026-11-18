@@ -224,3 +224,55 @@
         @apply font-sans;
     }
 }
+
+/* Slightly bigger buttons across the app. The Button component sets
+   data-slot="button" and data-size, and plain (unlayered) CSS wins over the
+   Tailwind utility heights, so these rules scale every variant up one step. */
+[data-slot="button"] {
+    min-height: 2.5rem;   /* default: h-9 -> h-10 */
+}
+[data-slot="button"][data-size="lg"] {
+    min-height: 2.75rem;  /* h-10 -> h-11 */
+}
+[data-slot="button"][data-size="sm"] {
+    min-height: 2.25rem;  /* h-8 -> h-9 */
+}
+[data-slot="button"][data-size="xs"] {
+    min-height: 1.75rem;  /* h-6 -> h-7 */
+}
+[data-slot="button"][data-size="icon"] {
+    min-height: 2.5rem;
+    min-width: 2.5rem;    /* size-9 -> size-10 */
+}
+[data-slot="button"][data-size="icon-lg"] {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+}
+[data-slot="button"][data-size="icon-sm"] {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+}
+[data-slot="button"][data-size="icon-xs"] {
+    min-height: 1.75rem;
+    min-width: 1.75rem;
+}
+
+/* Page entrance: each page's root container fades in and settles down from
+   slightly above its final position. All page roots use .min-h-svh, so one
+   rule covers every route. "both" keeps the hidden start state so there is
+   no flash of unanimated content. */
+@media (prefers-reduced-motion: no-preference) {
+    .min-h-svh {
+        animation: page-enter 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+}
+@keyframes page-enter {
+    from {
+        opacity: 0;
+        transform: translateY(-12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
